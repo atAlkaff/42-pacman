@@ -14,7 +14,7 @@ a = Analysis(
     hiddenimports=[
         'pydantic',
         'pygame',
-        'a_maze_ing' # Ensure the external package is bundled[cite: 9]
+        'a_maze_ing' # Ensure the external package is bundled
     ],
     hookspath=[],
     hooksconfig={},
