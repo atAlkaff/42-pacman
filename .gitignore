@@ -1,0 +1,23 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Type checking and linting caches]
+.mypy_cache/
+
+# Virtual environments (including uv and venv)
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+
+# Game-specific persistent storage
+highscores.json
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store

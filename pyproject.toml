@@ -1,0 +1,20 @@
+[project]
+name = "pacman"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ahmed Alkaff", email = "ahmedalkaff2006@yahoo.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mypy>=2.4.0",
+    "pydantic>=2.14.1",
+]
+
+[project.scripts]
+pacman = "pacman:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"

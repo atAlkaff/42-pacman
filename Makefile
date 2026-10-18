@@ -5,8 +5,7 @@ CONFIG = config.json
 .PHONY: install run debug clean lint lint-strict
 
 install:
-	uv venv
-	uv pip install -r requirements.txt
+	uv sync
 
 run:
 	$(PYTHON) $(MAIN) $(CONFIG)
