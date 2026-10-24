@@ -1,6 +1,12 @@
 import sys
+import os
 import logging
 from typing import NoReturn
+
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), 'src')
+))
+
 from utils.config_parser import parse_config, GameConfig
 
 # Configure logging for the main entry point to avoid tracebacks

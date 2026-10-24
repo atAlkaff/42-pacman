@@ -1,4 +1,3 @@
-PYTHON = python3
 MAIN = pac-man.py
 CONFIG = config.json
 
@@ -8,10 +7,10 @@ install:
 	uv sync
 
 run:
-	$(PYTHON) $(MAIN) $(CONFIG)
+	uv run $(MAIN) $(CONFIG)
 
 debug:
-	$(PYTHON) -m pdb $(MAIN) $(CONFIG)
+	uv run python -m pdb $(MAIN) $(CONFIG)
 
 clean:
 	rm -rf __pycache__ .mypy_cache

@@ -1,0 +1,34 @@
+# Custom configuration file setting the required game parameters[cite: 8].
+# The parser must handle and ignore these '#' comments alongside standard JSON format[cite: 8].
+{
+    "highscore_filename": "highscores.json",
+
+    # Player starting parameters
+    "lives": 3,
+
+    # Scoring multipliers and points
+    "pacgum": 42,
+    "points_per_pacgum": 10,
+    "points_per_super_pacgum": 50,
+    "points_per_ghost": 200,
+
+    # Maze generation seed and time limits[cite: 9]
+    "seed": 42,
+    "level_max_time": 90,
+
+    # Array of multiple levels with their respective maze dimensions[cite: 8]
+    "level": [
+        {
+            "width": 21,
+            "height": 21
+        },
+        {
+            "width": 25,
+            "height": 25
+        },
+        {
+            "width": 29,
+            "height": 29
+        }
+    ]
+}
