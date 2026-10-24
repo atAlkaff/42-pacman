@@ -10,6 +10,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "flake8>=7.4.1",
+    "mazegenerator",
     "mypy>=2.4.0",
     "pydantic>=2.14.1",
 ]
@@ -20,3 +21,6 @@ pacman = "pacman:main"
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+mazegenerator = { path = "mazegenerator-2.1.0-py3-none-any.whl" }
