@@ -1,91 +1,130 @@
+"""Draw Pac-Man maze, entities, and basic game-state messages."""
+
+from typing import List
+
 import pygame
-from typing import List, Tuple
+
+from models.entities import Ghost, Player
 from models.maze_state import MazeState
-from models.entities import Player, Ghost
 
 
 class PygameRenderer:
-    """
-    Handles all visual rendering using MLX-equivalent Pygame functions.
-    Restricts operations to window creation and surface blitting.
-    """
-    TILE_SIZE = 32
+    """Manage the display and draw the current game state."""
 
-    # Colors
+    TILE_SIZE = 32
+    HUD_HEIGHT = 80
+
     COLOR_BG = (0, 0, 0)
     COLOR_WALL = (30, 30, 200)
     COLOR_PACGUM = (255, 184, 174)
     COLOR_PLAYER = (255, 255, 0)
     COLOR_GHOST = (255, 0, 0)
     COLOR_GHOST_EDIBLE = (0, 0, 255)
+    COLOR_TEXT = (255, 255, 255)
 
     def __init__(self, grid_width: int, grid_height: int) -> None:
-        """Initializes the window display (equivalent to mlx_new_window)."""
+        """Create a game window sized to the initial maze."""
         pygame.init()
-        self.width = grid_width * self.TILE_SIZE
-        # Extra space at the bottom for the HUD
-        self.height = (grid_height * self.TILE_SIZE) + 80
-        self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Pac-Man")
+        self.tile_size = self.TILE_SIZE
+        self.width = 0
+        self.height = 0
+        self.screen: pygame.Surface
+        self.wall_img: pygame.Surface
+        self.resize_grid(grid_width, grid_height)
 
-        # Pre-create simple surfaces (equivalent to mlx images)
-        self.wall_img = pygame.Surface((self.TILE_SIZE, self.TILE_SIZE))
+    def resize_grid(self, grid_width: int, grid_height: int) -> None:
+        """Resize the display and tile sprites to fit a new level.
+
+        Keep room for the HUD and fit large mazes on typical displays.
+        """
+        if grid_width <= 0 or grid_height <= 0:
+            raise ValueError("Grid dimensions must be positive")
+
+        display_info = pygame.display.Info()
+        available_width = max(1, int(display_info.current_w * 0.90))
+        available_height = max(
+            1, int(display_info.current_h * 0.85) - self.HUD_HEIGHT
+        )
+
+        self.tile_size = max(
+            1,
+            min(
+                self.TILE_SIZE,
+                available_width // grid_width,
+                available_height // grid_height,
+            ),
+        )
+        self.width = grid_width * self.tile_size
+        self.height = grid_height * self.tile_size + self.HUD_HEIGHT
+
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.wall_img = pygame.Surface((self.tile_size, self.tile_size))
         self.wall_img.fill(self.COLOR_WALL)
 
     def clear_screen(self) -> None:
-        """Clears the previous frame."""
+        """Erase the previous frame."""
         self.screen.fill(self.COLOR_BG)
 
     def draw_maze(self, state: MazeState) -> None:
-        """
-        Draws walls, Pacgums, and Super-pacgums based on the internal grid.
-        """
+        """Draw maze walls, dots, and power pellets."""
+        half_tile = self.tile_size // 2
         for r in range(state.height):
             for c in range(state.width):
-                x = c * self.TILE_SIZE
-                y = r * self.TILE_SIZE
+                x = c * self.tile_size
+                y = r * self.tile_size
                 cell = state.grid[r][c]
-
                 if cell == MazeState.WALL:
                     self.screen.blit(self.wall_img, (x, y))
-                elif cell == MazeState.PACGUM:
-                    # Draw a small dot
-                    pygame.draw.circle(self.screen, self.COLOR_PACGUM,
-                                       (x + self.TILE_SIZE // 2,
-                                        y + self.TILE_SIZE // 2), 4)
-                elif cell == MazeState.SUPER_PACGUM:
-                    # Draw a larger power pellet
-                    pygame.draw.circle(self.screen, self.COLOR_PACGUM,
-                                       (x + self.TILE_SIZE // 2,
-                                        y + self.TILE_SIZE // 2), 10)
+                elif cell in (MazeState.PACGUM, MazeState.SUPER_PACGUM):
+                    radius = (
+                        max(1, self.tile_size // 8)
+                        if cell == MazeState.PACGUM
+                        else max(2, self.tile_size // 3)
+                    )
+                    pygame.draw.circle(
+                        self.screen,
+                        self.COLOR_PACGUM,
+                        (x + half_tile, y + half_tile),
+                        radius,
+                    )
 
     def draw_entities(self, player: Player, ghosts: List[Ghost]) -> None:
-        """Draws the player and all ghosts at their current grid positions."""
-        # Draw player
-        px = player.c * self.TILE_SIZE + self.TILE_SIZE // 2
-        py = player.r * self.TILE_SIZE + self.TILE_SIZE // 2
+        """Draw Pac-Man and the four ghosts at their grid positions."""
+        half_tile = self.tile_size // 2
+        radius = max(1, half_tile - 2)
+        px = player.c * self.tile_size + half_tile
+        py = player.r * self.tile_size + half_tile
         pygame.draw.circle(
-            self.screen,
-            self.COLOR_PLAYER,
-            (px, py),
-            self.TILE_SIZE // 2 - 2
+            self.screen, self.COLOR_PLAYER, (px, py), radius
         )
 
-        # Draw ghosts
         for ghost in ghosts:
-            gx = ghost.c * self.TILE_SIZE + self.TILE_SIZE // 2
-            gy = ghost.r * self.TILE_SIZE + self.TILE_SIZE // 2
-            if ghost.is_edible:
-                color = self.COLOR_GHOST_EDIBLE
-            else:
-                color = self.COLOR_GHOST
-            pygame.draw.circle(
-                self.screen,
-                color,
-                (gx, gy),
-                self.TILE_SIZE // 2 - 2
+            gx = ghost.c * self.tile_size + half_tile
+            gy = ghost.r * self.tile_size + half_tile
+            color = (
+                self.COLOR_GHOST_EDIBLE
+                if ghost.is_edible else self.COLOR_GHOST
             )
+            pygame.draw.circle(self.screen, color, (gx, gy), radius)
+
+    def draw_centered_message(self, title: str, subtitle: str) -> None:
+        """Draw simple placeholder menu and result messages."""
+        font = pygame.font.SysFont(None, 40)
+        small_font = pygame.font.SysFont(None, 26)
+        center_x = self.width // 2
+        center_y = (self.height - self.HUD_HEIGHT) // 2
+
+        title_image = font.render(title, True, self.COLOR_TEXT)
+        subtitle_image = small_font.render(subtitle, True, self.COLOR_TEXT)
+        self.screen.blit(
+            title_image, title_image.get_rect(center=(center_x, center_y))
+        )
+        self.screen.blit(
+            subtitle_image,
+            subtitle_image.get_rect(center=(center_x, center_y + 40)),
+        )
 
     def update_display(self) -> None:
-        """Pushes the rendered frame to the display."""
+        """Present the latest frame."""
         pygame.display.flip()

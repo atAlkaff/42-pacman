@@ -1,19 +1,30 @@
+
+"""Load and validate Pac-Man settings from a commented JSON file."""
+
 import json
 import logging
 import re
-from typing import Any, Dict
-from pydantic import BaseModel, Field, ConfigDict, ValidationError
+from typing import Any
 
-# Configure logging for clear message output without tracebacks
-logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+
+class LevelConfig(BaseModel):
+    """Represent the dimensions of one maze before tile expansion."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    width: int = Field(default=21, ge=3)
+    height: int = Field(default=21, ge=3)
 
 
 class GameConfig(BaseModel):
-    """
-    Data model defining the configuration schema with safe defaults.
-    Enforces strict typing and boundary validation.
-    """
-    model_config = ConfigDict(extra='ignore')  # Unknown keys must be ignored
+    """Represent game settings with validated, safe defaults."""
+
+    model_config = ConfigDict(extra="ignore")
 
     highscore_filename: str = "highscores.json"
     lives: int = Field(default=3, ge=1)
@@ -23,63 +34,98 @@ class GameConfig(BaseModel):
     points_per_ghost: int = Field(default=200, ge=0)
     seed: int = 42
     level_max_time: int = Field(default=90, ge=10)
+    level: list[LevelConfig] = Field(
+        default_factory=lambda: [LevelConfig()],
+        min_length=1,
+    )
 
 
 def strip_comments(json_str: str) -> str:
-    """
-    Removes lines starting with '#' or '//' to support custom JSON comments
-    """
-    # Matches any line where the first non-whitespace character is # or //
-    return re.sub(r'(?m)^\s*(#|//).*$', '', json_str)
+    """Remove whole lines that begin with # or // (after whitespace)."""
+    return re.sub(r"(?m)^[ \t]*(?:#|//)[^\r\n]*$", "", json_str)
+
+
+def _parse_levels(value: Any) -> list[LevelConfig]:
+    """Validate each level and retain valid dimensions when one is faulty."""
+    if not isinstance(value, list) or not value:
+        logging.warning("Invalid 'level' list. Using the default level.")
+        return [LevelConfig()]
+
+    levels: list[LevelConfig] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            logging.warning(
+                "Invalid level %d. Using default dimensions.", index
+            )
+            levels.append(LevelConfig())
+            continue
+
+        values: dict[str, Any] = {}
+        for dimension in ("width", "height"):
+            if dimension not in item:
+                continue
+            try:
+                checked = LevelConfig.model_validate(
+                    {dimension: item[dimension]}
+                )
+                values[dimension] = getattr(checked, dimension)
+            except ValidationError:
+                logging.warning(
+                    "Invalid level %d %s. Using the default value.",
+                    index,
+                    dimension,
+                )
+
+        levels.append(LevelConfig.model_validate(values))
+
+    return levels
 
 
 def parse_config(filepath: str) -> GameConfig:
-    """
-    Reads the configuration file, strips comments, and validates the JSON.
-    Any missing file, invalid JSON, or faulty value is clamped to safe
-    defaults.
+    """Read commented JSON and replace invalid settings with safe defaults.
+
+    Keep valid settings even when other fields or levels are invalid.
+    Unknown settings are ignored.
     """
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            raw_content: str = f.read()
-    except FileNotFoundError:
-        logging.error(f"Configuration file '{filepath}' missing. "
-                      f"Clamping to safe defaults.")
+        with open(filepath, "r", encoding="utf-8") as file:
+            raw_content = file.read()
+    except OSError as exc:
+        logging.error(
+            "Cannot read configuration file '%s': %s. Using defaults.",
+            filepath,
+            exc,
+        )
         return GameConfig()
-    except Exception as e:
-        logging.error(f"Error accessing configuration file: {e}. "
-                      f"Clamping to safe defaults.")
-        return GameConfig()
-
-    clean_content: str = strip_comments(raw_content)
 
     try:
-        raw_data: Dict[str, Any] = json.loads(clean_content)
-    except json.JSONDecodeError as e:
-        logging.error(f"Invalid JSON structure in '{filepath}': {e}. "
-                      f"Clamping to safe defaults.")
+        parsed_json: object = json.loads(strip_comments(raw_content))
+    except json.JSONDecodeError as exc:
+        logging.error(
+            "Invalid JSON in '%s': %s. Using defaults.", filepath, exc
+        )
         return GameConfig()
 
-    # Granular clamping: validate key-by-key to preserve valid
-    # entries while clamping faulty ones
-    safe_data: Dict[str, Any] = {}
-    defaults: Dict[str, Any] = GameConfig().model_dump()
+    if not isinstance(parsed_json, dict):
+        logging.error("Configuration root must be an object. Using defaults.")
+        return GameConfig()
 
-    for key, default_value in defaults.items():
-        if key in raw_data:
-            try:
-                # Test if the individual field passes Pydantic's type
-                # checking and boundary constraints
-                validated_model = GameConfig(**{key: raw_data[key]})
-                safe_data[key] = getattr(validated_model, key)
-            except ValidationError:
-                logging.warning(f"Invalid value for '{key}'. "
-                                f"Clamping to default: {default_value}.")
-                safe_data[key] = default_value
-        else:
-            safe_data[key] = default_value
+    safe_data: dict[str, Any] = {}
 
-    # Merge unknown keys safely (they will be ignored by Pydantic's ConfigDict)
-    safe_data.update({k: v for k, v in raw_data.items() if k not in defaults})
+    for key in GameConfig.model_fields:
+        if key not in parsed_json:
+            continue
 
-    return GameConfig(**safe_data)
+        if key == "level":
+            safe_data[key] = _parse_levels(parsed_json[key])
+            continue
+
+        try:
+            checked = GameConfig.model_validate({key: parsed_json[key]})
+            safe_data[key] = getattr(checked, key)
+        except ValidationError:
+            logging.warning(
+                "Invalid value for '%s'. Using the default value.", key
+            )
+
+    return GameConfig.model_validate(safe_data)
