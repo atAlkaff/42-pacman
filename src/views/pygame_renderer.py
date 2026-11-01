@@ -31,6 +31,19 @@ class PygameRenderer:
         self.height = 0
         self.screen: pygame.Surface
         self.wall_img: pygame.Surface
+
+        # Read desktop dimensions BEFORE creating or resizing the window.
+        # display.Info() may report the current window size after set_mode(),
+        # which would make each successive level smaller than the last.
+        desktop_sizes = pygame.display.get_desktop_sizes()
+        if desktop_sizes:
+            desktop_width, desktop_height = desktop_sizes[0]
+        else:
+            info = pygame.display.Info()
+            desktop_width, desktop_height = info.current_w, info.current_h
+
+        self._desktop_width = max(1, int(desktop_width))
+        self._desktop_height = max(1, int(desktop_height))
         self.resize_grid(grid_width, grid_height)
 
     def resize_grid(self, grid_width: int, grid_height: int) -> None:
@@ -41,10 +54,11 @@ class PygameRenderer:
         if grid_width <= 0 or grid_height <= 0:
             raise ValueError("Grid dimensions must be positive")
 
-        display_info = pygame.display.Info()
-        available_width = max(1, int(display_info.current_w * 0.90))
+        # Use the cached DESKTOP size, never the last window's size.
+        available_width = max(1, min(1000, int(self._desktop_width * 0.90)))
         available_height = max(
-            1, int(display_info.current_h * 0.85) - self.HUD_HEIGHT
+            1,
+            min(850, int(self._desktop_height * 0.85)) - self.HUD_HEIGHT,
         )
 
         self.tile_size = max(

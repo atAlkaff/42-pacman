@@ -13,12 +13,13 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
 
 class LevelConfig(BaseModel):
-    """Represent the dimensions of one maze before tile expansion."""
+    """Represent one level's maze dimensions and optional time limit."""
 
     model_config = ConfigDict(extra="ignore")
 
     width: int = Field(default=21, ge=3)
     height: int = Field(default=21, ge=3)
+    time_limit: int | None = Field(default=None, ge=10)
 
 
 class GameConfig(BaseModel):
@@ -46,7 +47,7 @@ def strip_comments(json_str: str) -> str:
 
 
 def _parse_levels(value: Any) -> list[LevelConfig]:
-    """Validate each level and retain valid dimensions when one is faulty."""
+    """Validate each level while preserving its other valid fields."""
     if not isinstance(value, list) or not value:
         logging.warning("Invalid 'level' list. Using the default level.")
         return [LevelConfig()]
@@ -55,13 +56,13 @@ def _parse_levels(value: Any) -> list[LevelConfig]:
     for index, item in enumerate(value, start=1):
         if not isinstance(item, dict):
             logging.warning(
-                "Invalid level %d. Using default dimensions.", index
+                "Invalid level %d. Using default settings.", index
             )
             levels.append(LevelConfig())
             continue
 
         values: dict[str, Any] = {}
-        for dimension in ("width", "height"):
+        for dimension in ("width", "height", "time_limit"):
             if dimension not in item:
                 continue
             try:
