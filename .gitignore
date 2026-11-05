@@ -21,3 +21,7 @@ highscores.json
 .vscode/
 .idea/
 .DS_Store
+
+# PyInstaller output (rebuild with `make package`)
+build/
+dist/

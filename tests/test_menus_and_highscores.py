@@ -110,6 +110,18 @@ class HighscoreSystemTests(unittest.TestCase):
 class EngineMenuTests(unittest.TestCase):
     """Drive the real engine's menus without opening a window."""
 
+    @property
+    def player(self) -> Player:
+        """The engine's player (always set in these tests)."""
+        assert self.engine.player is not None
+        return self.engine.player
+
+    @property
+    def maze(self) -> MazeState:
+        """The engine's maze (always set in these tests)."""
+        assert self.engine.maze is not None
+        return self.engine.maze
+
     def setUp(self) -> None:
         """Build an engine on a tiny maze with a temporary score file."""
         self.tmp = tempfile.TemporaryDirectory()
@@ -213,7 +225,7 @@ class EngineMenuTests(unittest.TestCase):
 
     def test_name_entry_saves_score(self) -> None:
         """Typing a name and pressing ENTER saves it, then shows the menu."""
-        self.engine.player.score = 1234
+        self.player.score = 1234
         self.engine._end_game(GameEngine.STATE_GAME_OVER)
         self.type_text("Al!ce Smith_long")
         self.assertEqual(self.engine.name_input, "Alce Smith")
@@ -272,7 +284,7 @@ class EngineMenuTests(unittest.TestCase):
         self.press(pygame.K_3)
         self.assertTrue(manager.ghosts_frozen)
         self.press(pygame.K_4)
-        self.assertEqual(self.engine.player.lives, 4)
+        self.assertEqual(self.player.lives, 4)
         self.press(pygame.K_6)
         self.assertTrue(all(g.is_edible for g in self.engine.ghosts))
         self.press(pygame.K_7)
@@ -294,7 +306,7 @@ class EngineMenuTests(unittest.TestCase):
         self.assertTrue(self.engine.cheat_manager.invincibility_active)
         self.assertEqual(self.engine._toast_text, "Invincibility ON")
         self.engine._handle_input(key_event(pygame.K_KP4, "4"))
-        self.assertEqual(self.engine.player.lives, 4)
+        self.assertEqual(self.player.lives, 4)
 
     def test_wasd_uses_physical_positions(self) -> None:
         """AZERTY: the W position types 'z' but still moves up."""
@@ -302,7 +314,7 @@ class EngineMenuTests(unittest.TestCase):
         self.engine.player = Player(2, 2, 3)
         self.engine._handle_input(key_event(pygame.K_z, "z", pygame.KSCAN_W))
         self.assertEqual(
-            (self.engine.player.r, self.engine.player.c), (1, 2)
+            (self.player.r, self.player.c), (1, 2)
         )
         self.engine._handle_input(pygame.event.Event(
             pygame.KEYUP, key=pygame.K_z, scancode=pygame.KSCAN_W
@@ -313,7 +325,7 @@ class EngineMenuTests(unittest.TestCase):
         """F4 adds a life."""
         self.engine.current_state = GameEngine.STATE_PLAYING
         self.press(pygame.K_F4)
-        self.assertEqual(self.engine.player.lives, 4)
+        self.assertEqual(self.player.lives, 4)
 
     def test_power_mode_cheat(self) -> None:
         """F6 makes ghosts edible without a super-pacgum."""
@@ -334,7 +346,7 @@ class EngineMenuTests(unittest.TestCase):
         self.assertIn("5 speed", self.engine.cheat_manager.active_labels())
         self.press(pygame.K_RIGHT)  # Immediate first step.
         self.engine._update_player_movement(GameEngine.PLAYER_MOVE_INTERVAL)
-        self.assertEqual(self.engine.player.c, 4)
+        self.assertEqual(self.player.c, 4)
 
 
 if __name__ == "__main__":

@@ -22,21 +22,52 @@ logging.basicConfig(
 )
 
 
+def is_packaged() -> bool:
+    """True when running as the PyInstaller build (e.g. from itch.io)."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def packaged_config_path() -> str:
+    """Config for the packaged game when it is started without arguments.
+
+    A game platform or a double-click passes no arguments, so the build
+    uses the config.json next to the executable (players can edit it), or
+    the copy bundled inside the build.
+    """
+    beside_executable = os.path.join(
+        os.path.dirname(sys.executable), "config.json"
+    )
+    if os.path.isfile(beside_executable):
+        return beside_executable
+    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    return os.path.join(bundle_dir, "config.json")
+
+
 def main() -> None:
     """
     Main entry point for the Pac-Man game.
     Validates command-line arguments, loads the configuration, and
     starts the game loop.
     """
-    # Enforce exactly one argument for the configuration file
-    if len(sys.argv) != 2:
+    # Enforce exactly one argument for the configuration file. Only the
+    # packaged build may start without one (see packaged_config_path).
+    if len(sys.argv) == 1 and is_packaged():
+        config_filepath = packaged_config_path()
+    elif len(sys.argv) == 2:
+        config_filepath = sys.argv[1]
+    else:
         logging.error("Usage: python3 pac-man.py <config.json>")
         sys.exit(1)
 
-    config_filepath: str = sys.argv[1]
-
     # Parse configuration, which handles missing files and invalid keys cleanly
     config: GameConfig = parse_config(config_filepath)
+
+    if is_packaged() and not os.path.isabs(config.highscore_filename):
+        # The bundled files live in a temporary folder that is deleted on
+        # exit, so keep highscores next to the executable instead.
+        config.highscore_filename = os.path.join(
+            os.path.dirname(sys.executable), config.highscore_filename
+        )
 
     logging.info("Configuration loaded successfully. Starting game engine...")
 

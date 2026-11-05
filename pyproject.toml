@@ -1,7 +1,7 @@
 [project]
 name = "pacman"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pac-Man in Python with pygame, using an external A-Maze-ing maze generator."
 readme = "README.md"
 authors = [
     { name = "Ahmed Alkaff", email = "aalkaff@student.42abudhabi.ae" },
@@ -9,19 +9,35 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "flake8>=7.4.1",
     "mazegenerator",
-    "mypy>=2.4.0",
     "pydantic>=2.14.1",
     "pygame>=2.6.1",
 ]
 
-[project.scripts]
-pacman = "pacman:main"
+[dependency-groups]
+# Development tools: installed by `uv sync`, not needed to play.
+dev = [
+    "flake8>=7.4.1",
+    "mypy>=2.4.0",
+    "pyinstaller>=6.0",
+]
 
-[build-system]
-requires = ["uv_build>=0.12.21,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+# This is an application launched with `python3 pac-man.py config.json`,
+# not a library, so uv does not build or install it as a package.
+package = false
 
 [tool.uv.sources]
+# The A-Maze-ing package assigned to us, used as-is.
 mazegenerator = { path = "mazegenerator-2.1.0-py3-none-any.whl" }
+
+[tool.mypy]
+# Our modules live in src/ and are imported as `controllers`, `models`...
+mypy_path = "src"
+explicit_package_bases = true
+exclude = ['^\.venv/', '^build/', '^dist/']
+
+[[tool.mypy.overrides]]
+# The assigned maze package has no type hints; we cannot change it.
+module = "mazegenerator"
+ignore_missing_imports = true

@@ -55,6 +55,10 @@ class PygameRenderer:
         self.screen: pygame.Surface
         self.wall_img: pygame.Surface
         self._fonts: dict[int, pygame.font.Font] = {}
+        # Cached image of the current maze (see draw_maze).
+        self._maze_surface: pygame.Surface | None = None
+        self._maze_state: MazeState | None = None
+        self._erased = 0
 
         # Read desktop dimensions BEFORE creating or resizing the window.
         # display.Info() may report the current window size after set_mode(),
@@ -105,33 +109,58 @@ class PygameRenderer:
         self.screen = pygame.display.set_mode((self.width, self.height))
         self.wall_img = pygame.Surface((self.tile_size, self.tile_size))
         self.wall_img.fill(self.COLOR_WALL)
+        self._maze_surface = None  # Tile size may have changed.
 
     def clear_screen(self) -> None:
         """Erase the previous frame."""
         self.screen.fill(self.COLOR_BG)
 
-    def draw_maze(self, state: MazeState) -> None:
-        """Draw maze walls, dots, and power pellets."""
-        half_tile = self.tile_size // 2
+    def _build_maze_surface(self, state: MazeState) -> pygame.Surface:
+        """Draw the whole maze (walls, dots, power pellets) once."""
+        tile = self.tile_size
+        half_tile = tile // 2
+        surface = pygame.Surface((state.width * tile, state.height * tile))
+        surface.fill(self.COLOR_BG)
         for r in range(state.height):
             for c in range(state.width):
-                x = self.offset_x + c * self.tile_size
-                y = self.offset_y + r * self.tile_size
+                x = c * tile
+                y = r * tile
                 cell = state.grid[r][c]
                 if cell == MazeState.WALL:
-                    self.screen.blit(self.wall_img, (x, y))
+                    surface.blit(self.wall_img, (x, y))
                 elif cell in (MazeState.PACGUM, MazeState.SUPER_PACGUM):
                     radius = (
-                        max(1, self.tile_size // 8)
+                        max(1, tile // 8)
                         if cell == MazeState.PACGUM
-                        else max(2, self.tile_size // 3)
+                        else max(2, tile // 3)
                     )
                     pygame.draw.circle(
-                        self.screen,
+                        surface,
                         self.COLOR_PACGUM,
                         (x + half_tile, y + half_tile),
                         radius,
                     )
+        return surface
+
+    def draw_maze(self, state: MazeState) -> None:
+        """Draw maze walls, dots, and power pellets.
+
+        The maze is drawn into an off-screen image once per level (or
+        resize). Each frame only the tiles eaten since the last frame are
+        erased from it, so large mazes stay fast.
+        """
+        if self._maze_surface is None or self._maze_state is not state:
+            self._maze_surface = self._build_maze_surface(state)
+            self._maze_state = state
+            self._erased = len(state.consumed)
+
+        tile = self.tile_size
+        for r, c in state.consumed[self._erased:]:
+            self._maze_surface.fill(
+                self.COLOR_BG, (c * tile, r * tile, tile, tile)
+            )
+        self._erased = len(state.consumed)
+        self.screen.blit(self._maze_surface, (self.offset_x, self.offset_y))
 
     def draw_entities(self, player: Player, ghosts: List[Ghost]) -> None:
         """Draw Pac-Man and the four ghosts at their grid positions."""

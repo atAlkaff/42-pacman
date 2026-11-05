@@ -16,6 +16,18 @@ from utils.config_parser import GameConfig
 class PacgumScoringTests(unittest.TestCase):
     """Exercise real game models without opening a graphics window."""
 
+    @property
+    def player(self) -> Player:
+        """The engine's player (always set in these tests)."""
+        assert self.engine.player is not None
+        return self.engine.player
+
+    @property
+    def maze(self) -> MazeState:
+        """The engine's maze (always set in these tests)."""
+        assert self.engine.maze is not None
+        return self.engine.maze
+
     def setUp(self) -> None:
         """Make a small level with one dot and one power pellet."""
         self.engine = GameEngine.__new__(GameEngine)
@@ -52,21 +64,21 @@ class PacgumScoringTests(unittest.TestCase):
     def test_small_pacgum_increases_score_and_disappears(self) -> None:
         """A small dot gives the configured points once."""
         self.press(pygame.K_UP)
-        self.assertEqual((self.engine.player.r, self.engine.player.c), (1, 2))
-        self.assertEqual(self.engine.player.score, 13)
-        self.assertEqual(self.engine.maze.grid[1][2], MazeState.CORRIDOR)
-        self.assertEqual(self.engine.maze.remaining_collectables, 1)
+        self.assertEqual((self.player.r, self.player.c), (1, 2))
+        self.assertEqual(self.player.score, 13)
+        self.assertEqual(self.maze.grid[1][2], MazeState.CORRIDOR)
+        self.assertEqual(self.maze.remaining_collectables, 1)
 
     def test_wasd_collects_pacgum(self) -> None:
         """A movement key from WASD triggers the same collection."""
         self.press(pygame.K_w)
-        self.assertEqual(self.engine.player.score, 13)
+        self.assertEqual(self.player.score, 13)
 
     def test_empty_tile_does_not_increase_score(self) -> None:
         """Moving onto an empty corridor never changes the score."""
         self.press(pygame.K_RIGHT)
-        self.assertEqual(self.engine.player.score, 0)
-        self.assertEqual(self.engine.maze.remaining_collectables, 2)
+        self.assertEqual(self.player.score, 0)
+        self.assertEqual(self.maze.remaining_collectables, 2)
 
     def test_collecting_twice_does_not_duplicate_score(self) -> None:
         """Returning to an already eaten dot cannot award it again."""
@@ -75,8 +87,8 @@ class PacgumScoringTests(unittest.TestCase):
         self.press(pygame.K_DOWN)
         self.release(pygame.K_DOWN)
         self.press(pygame.K_UP)
-        self.assertEqual(self.engine.player.score, 13)
-        self.assertEqual(self.engine.maze.remaining_collectables, 1)
+        self.assertEqual(self.player.score, 13)
+        self.assertEqual(self.maze.remaining_collectables, 1)
 
     def test_power_pacgum_scores_and_makes_ghosts_edible(self) -> None:
         """A power pellet awards points and activates ghost power mode."""
@@ -85,10 +97,10 @@ class PacgumScoringTests(unittest.TestCase):
         self.press(pygame.K_RIGHT)
         self.release(pygame.K_RIGHT)
         self.press(pygame.K_UP)
-        self.assertEqual((self.engine.player.r, self.engine.player.c), (1, 4))
-        self.assertEqual(self.engine.player.score, 61)
-        self.assertEqual(self.engine.maze.grid[1][4], MazeState.CORRIDOR)
-        self.assertEqual(self.engine.maze.remaining_collectables, 1)
+        self.assertEqual((self.player.r, self.player.c), (1, 4))
+        self.assertEqual(self.player.score, 61)
+        self.assertEqual(self.maze.grid[1][4], MazeState.CORRIDOR)
+        self.assertEqual(self.maze.remaining_collectables, 1)
         for ghost in self.engine.ghosts:
             self.assertTrue(ghost.is_edible)
             self.assertEqual(
@@ -105,11 +117,11 @@ class PacgumScoringTests(unittest.TestCase):
 
     def test_wall_blocks_item_collection(self) -> None:
         """A blocked movement does not collect nearby items."""
-        self.engine.player.r, self.engine.player.c = 1, 2
+        self.player.r, self.player.c = 1, 2
         self.press(pygame.K_UP)
-        self.assertEqual((self.engine.player.r, self.engine.player.c), (1, 2))
-        self.assertEqual(self.engine.player.score, 0)
-        self.assertEqual(self.engine.maze.remaining_collectables, 2)
+        self.assertEqual((self.player.r, self.player.c), (1, 2))
+        self.assertEqual(self.player.score, 0)
+        self.assertEqual(self.maze.remaining_collectables, 2)
 
     def test_last_pacgum_triggers_level_completion(self) -> None:
         """Finishing the final dot invokes existing level progression."""
@@ -118,10 +130,10 @@ class PacgumScoringTests(unittest.TestCase):
             [1, 0, 2, 1],
             [1, 1, 1, 1],
         ])
-        self.engine.player.r = 1
-        self.engine.player.c = 1
+        self.player.r = 1
+        self.player.c = 1
         self.press(pygame.K_RIGHT)
-        self.assertTrue(self.engine.maze.is_completed())
+        self.assertTrue(self.maze.is_completed())
         with patch.object(self.engine, "_advance_level") as advance:
             self.engine._update_playing(0.01)
             advance.assert_called_once_with()

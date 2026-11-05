@@ -136,6 +136,10 @@ class GameEngine:
     # Set PACMAN_DEBUG_KEYS=1 to log every keyboard event in the terminal.
     DEBUG_KEYS_ENV = "PACMAN_DEBUG_KEYS"
     _debug_keys: bool = False
+    # Distances from the player, reused until the player moves.
+    _distance_maze: MazeState | None = None
+    _distance_pos: tuple[int, int] | None = None
+    _distance_map: dict[tuple[int, int], int] = {}
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -217,8 +221,8 @@ class GameEngine:
         current_score = self.player.score if self.player else 0
         current_lives = self.player.lives if self.player else self.config.lives
 
-        center_r = self.maze.height // 2
-        center_c = self.maze.width // 2
+        # The adapter picks the open tile closest to the middle of the maze.
+        center_r, center_c = self.adapter.spawn
         self.player = Player(center_r, center_c, current_lives)
         self.player.score = current_score
 
@@ -717,10 +721,7 @@ class GameEngine:
             ghost.move_elapsed = min(ghost.move_elapsed - interval, interval)
 
             if distances is None:
-                # One search from the player serves all ghosts this frame.
-                distances = self.maze.distances_from(
-                    self.player.r, self.player.c
-                )
+                distances = self._distances_from_player()
             dr, dc = ghost.choose_direction(
                 self.maze.open_moves(ghost.r, ghost.c), distances, self._rng
             )
@@ -733,6 +734,23 @@ class GameEngine:
                 return
             if self._respawn_pause > 0:
                 return  # Positions were reset; skip the rest of this frame.
+
+    def _distances_from_player(self) -> dict[tuple[int, int], int]:
+        """Walking distances from the player, cached until they move.
+
+        One breadth-first search serves every ghost, and it is only
+        repeated after the player changes tile (or the level changes).
+        """
+        if self.player is None or self.maze is None:
+            return {}
+        position = (self.player.r, self.player.c)
+        if self._distance_maze is not self.maze or (
+            self._distance_pos != position
+        ):
+            self._distance_map = self.maze.distances_from(*position)
+            self._distance_maze = self.maze
+            self._distance_pos = position
+        return self._distance_map
 
     def _check_ghost_collisions(self) -> None:
         """Resolve the player sharing a tile with any ghost.
