@@ -242,6 +242,26 @@ class EngineMenuTests(unittest.TestCase):
             self.engine.current_state, GameEngine.STATE_GAME_OVER
         )
 
+    def test_number_keys_mirror_function_keys(self) -> None:
+        """Keys 1-7 trigger the same cheats as F1-F7 (laptop friendly)."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        manager = self.engine.cheat_manager
+        self.press(pygame.K_1)
+        self.assertTrue(manager.invincibility_active)
+        self.press(pygame.K_F1)
+        self.assertFalse(manager.invincibility_active)
+        self.press(pygame.K_3)
+        self.assertTrue(manager.ghosts_frozen)
+        self.press(pygame.K_4)
+        self.assertEqual(self.engine.player.lives, 4)
+        self.press(pygame.K_6)
+        self.assertTrue(all(g.is_edible for g in self.engine.ghosts))
+        self.press(pygame.K_7)
+        self.assertEqual(self.engine.time_left, GameEngine.LOW_TIME_CHEAT)
+        with patch.object(self.engine, "_advance_level") as advance:
+            self.press(pygame.K_2)
+            advance.assert_called_once_with()
+
     def test_extra_life_cheat(self) -> None:
         """F4 adds a life."""
         self.engine.current_state = GameEngine.STATE_PLAYING
@@ -264,7 +284,7 @@ class EngineMenuTests(unittest.TestCase):
             [1, 1, 1, 1, 1, 1, 1, 1],
         ])
         self.press(pygame.K_F5)
-        self.assertIn("F5 speed", self.engine.cheat_manager.active_labels())
+        self.assertIn("5 speed", self.engine.cheat_manager.active_labels())
         self.press(pygame.K_RIGHT)  # Immediate first step.
         self.engine._update_player_movement(GameEngine.PLAYER_MOVE_INTERVAL)
         self.assertEqual(self.engine.player.c, 4)

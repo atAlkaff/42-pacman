@@ -52,10 +52,10 @@ class GameEngine:
         "Move: arrow keys or WASD      Pause: ESC",
         "Menus: arrows/WS + ENTER      Back: ESC",
         "",
-        "Cheats (for review):",
-        "F1 invincible    F2 skip level    F3 freeze ghosts",
-        "F4 extra life    F5 speed boost    F6 power mode",
-        "F7 set level timer to 5 seconds",
+        "Cheats (for review): keys 1-7 or F1-F7",
+        "1 invincible    2 skip level    3 freeze ghosts",
+        "4 extra life    5 speed boost    6 power mode",
+        "7 set level timer to 5 seconds",
     )
 
     # Seconds between grid steps. Ghosts are a little slower than the
@@ -72,9 +72,28 @@ class GameEngine:
     GHOST_CHASE_CHANCES = (1.0, 0.85, 0.7, 0.5)
     # Random mazes that fail validation are regenerated this many times.
     MAZE_ATTEMPTS = 5
-    # The F5 cheat divides the player's step interval by this factor.
+    # Each cheat works with a number key and with its function key.
+    # Laptops often send brightness/volume for F1-F7 unless Fn is held,
+    # so the number row is the reliable choice there.
+    CHEAT_INVINCIBLE = "invincible"
+    CHEAT_SKIP_LEVEL = "skip_level"
+    CHEAT_FREEZE = "freeze"
+    CHEAT_EXTRA_LIFE = "extra_life"
+    CHEAT_SPEED = "speed"
+    CHEAT_POWER = "power"
+    CHEAT_LOW_TIME = "low_time"
+    CHEAT_KEYS: dict[int, str] = {
+        pygame.K_1: CHEAT_INVINCIBLE, pygame.K_F1: CHEAT_INVINCIBLE,
+        pygame.K_2: CHEAT_SKIP_LEVEL, pygame.K_F2: CHEAT_SKIP_LEVEL,
+        pygame.K_3: CHEAT_FREEZE, pygame.K_F3: CHEAT_FREEZE,
+        pygame.K_4: CHEAT_EXTRA_LIFE, pygame.K_F4: CHEAT_EXTRA_LIFE,
+        pygame.K_5: CHEAT_SPEED, pygame.K_F5: CHEAT_SPEED,
+        pygame.K_6: CHEAT_POWER, pygame.K_F6: CHEAT_POWER,
+        pygame.K_7: CHEAT_LOW_TIME, pygame.K_F7: CHEAT_LOW_TIME,
+    }
+    # The speed cheat divides the player's step interval by this factor.
     SPEED_BOOST_FACTOR = 2.0
-    # Seconds left on the clock after the F7 cheat.
+    # Seconds left on the clock after the low-time cheat.
     LOW_TIME_CHEAT = 5.0
     MAX_LIVES = 99
     MOVE_KEYS: dict[int, tuple[int, int]] = {
@@ -392,26 +411,31 @@ class GameEngine:
             self.pause_index = 0
             self._held_move_keys.clear()
             self._move_elapsed = 0.0
-        elif key == pygame.K_F1:
-            self.cheat_manager.toggle_invincibility()
-        elif key == pygame.K_F2:
-            self._advance_level()
-        elif key == pygame.K_F3:
-            self.cheat_manager.toggle_ghost_freeze()
-        elif key == pygame.K_F4:
-            if self.player is not None:
-                self.player.lives = min(self.MAX_LIVES, self.player.lives + 1)
-        elif key == pygame.K_F5:
-            self.cheat_manager.toggle_speed_boost()
-        elif key == pygame.K_F6:
-            self._activate_power_mode()
-        elif key == pygame.K_F7:
-            self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
+        elif key in self.CHEAT_KEYS:
+            self._apply_cheat(self.CHEAT_KEYS[key])
         elif key in self.MOVE_KEYS:
             if key not in self._held_move_keys:
                 self._held_move_keys.append(key)
                 self._move_player_one_tile()
                 self._move_elapsed = 0.0
+
+    def _apply_cheat(self, cheat: str) -> None:
+        """Run one cheat action (see CHEAT_KEYS for the key bindings)."""
+        if cheat == self.CHEAT_INVINCIBLE:
+            self.cheat_manager.toggle_invincibility()
+        elif cheat == self.CHEAT_SKIP_LEVEL:
+            self._advance_level()
+        elif cheat == self.CHEAT_FREEZE:
+            self.cheat_manager.toggle_ghost_freeze()
+        elif cheat == self.CHEAT_EXTRA_LIFE:
+            if self.player is not None:
+                self.player.lives = min(self.MAX_LIVES, self.player.lives + 1)
+        elif cheat == self.CHEAT_SPEED:
+            self.cheat_manager.toggle_speed_boost()
+        elif cheat == self.CHEAT_POWER:
+            self._activate_power_mode()
+        elif cheat == self.CHEAT_LOW_TIME:
+            self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
 
     def _handle_pause_key(self, key: int) -> None:
         """Resume, or abandon the game and return to the main menu."""
