@@ -17,9 +17,13 @@ from utils.config_parser import GameConfig
 from utils.highscore_system import HighscoreSystem
 
 
-def key_event(key: int, char: str = "") -> pygame.event.Event:
+def key_event(
+    key: int, char: str = "", scancode: int = 0
+) -> pygame.event.Event:
     """Build a KEYDOWN event like pygame would send it."""
-    return pygame.event.Event(pygame.KEYDOWN, key=key, unicode=char)
+    return pygame.event.Event(
+        pygame.KEYDOWN, key=key, unicode=char, scancode=scancode
+    )
 
 
 class HighscoreSystemTests(unittest.TestCase):
@@ -261,6 +265,30 @@ class EngineMenuTests(unittest.TestCase):
         with patch.object(self.engine, "_advance_level") as advance:
             self.press(pygame.K_2)
             advance.assert_called_once_with()
+
+    def test_cheats_use_physical_number_row(self) -> None:
+        """AZERTY: the '1' position types '&' but still toggles cheat 1."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.engine._handle_input(
+            key_event(pygame.K_AMPERSAND, "&", pygame.KSCAN_1)
+        )
+        self.assertTrue(self.engine.cheat_manager.invincibility_active)
+        self.assertEqual(self.engine._toast_text, "Invincibility ON")
+        self.engine._handle_input(key_event(pygame.K_KP4, "4"))
+        self.assertEqual(self.engine.player.lives, 4)
+
+    def test_wasd_uses_physical_positions(self) -> None:
+        """AZERTY: the W position types 'z' but still moves up."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.engine.player = Player(2, 2, 3)
+        self.engine._handle_input(key_event(pygame.K_z, "z", pygame.KSCAN_W))
+        self.assertEqual(
+            (self.engine.player.r, self.engine.player.c), (1, 2)
+        )
+        self.engine._handle_input(pygame.event.Event(
+            pygame.KEYUP, key=pygame.K_z, scancode=pygame.KSCAN_W
+        ))
+        self.assertEqual(self.engine._held_move_keys, [])
 
     def test_extra_life_cheat(self) -> None:
         """F4 adds a life."""

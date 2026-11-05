@@ -52,7 +52,7 @@ class GameEngine:
         "Move: arrow keys or WASD      Pause: ESC",
         "Menus: arrows/WS + ENTER      Back: ESC",
         "",
-        "Cheats (for review): keys 1-7 or F1-F7",
+        "Cheats (for review): number keys 1-7 or F1-F7",
         "1 invincible    2 skip level    3 freeze ghosts",
         "4 extra life    5 speed boost    6 power mode",
         "7 set level timer to 5 seconds",
@@ -72,9 +72,9 @@ class GameEngine:
     GHOST_CHASE_CHANCES = (1.0, 0.85, 0.7, 0.5)
     # Random mazes that fail validation are regenerated this many times.
     MAZE_ATTEMPTS = 5
-    # Each cheat works with a number key and with its function key.
-    # Laptops often send brightness/volume for F1-F7 unless Fn is held,
-    # so the number row is the reliable choice there.
+    # Each cheat works with a number key, a keypad digit, and a function
+    # key. Laptops often send brightness/volume for F1-F7 unless Fn is
+    # held, so the number row is the reliable choice there.
     CHEAT_INVINCIBLE = "invincible"
     CHEAT_SKIP_LEVEL = "skip_level"
     CHEAT_FREEZE = "freeze"
@@ -90,12 +90,41 @@ class GameEngine:
         pygame.K_5: CHEAT_SPEED, pygame.K_F5: CHEAT_SPEED,
         pygame.K_6: CHEAT_POWER, pygame.K_F6: CHEAT_POWER,
         pygame.K_7: CHEAT_LOW_TIME, pygame.K_F7: CHEAT_LOW_TIME,
+        pygame.K_KP1: CHEAT_INVINCIBLE, pygame.K_KP2: CHEAT_SKIP_LEVEL,
+        pygame.K_KP3: CHEAT_FREEZE, pygame.K_KP4: CHEAT_EXTRA_LIFE,
+        pygame.K_KP5: CHEAT_SPEED, pygame.K_KP6: CHEAT_POWER,
+        pygame.K_KP7: CHEAT_LOW_TIME,
     }
+    # Physical key positions (scancodes) of the number row. On AZERTY and
+    # other layouts these keys type symbols such as '&' unless Shift is
+    # held, so their key code is not K_1..K_7; the position is the same.
+    CHEAT_SCANCODES: dict[int, str] = {
+        pygame.KSCAN_1: CHEAT_INVINCIBLE,
+        pygame.KSCAN_2: CHEAT_SKIP_LEVEL,
+        pygame.KSCAN_3: CHEAT_FREEZE,
+        pygame.KSCAN_4: CHEAT_EXTRA_LIFE,
+        pygame.KSCAN_5: CHEAT_SPEED,
+        pygame.KSCAN_6: CHEAT_POWER,
+        pygame.KSCAN_7: CHEAT_LOW_TIME,
+    }
+    # Seconds a cheat confirmation stays on screen.
+    TOAST_DURATION = 2.0
     # The speed cheat divides the player's step interval by this factor.
     SPEED_BOOST_FACTOR = 2.0
     # Seconds left on the clock after the low-time cheat.
     LOW_TIME_CHEAT = 5.0
     MAX_LIVES = 99
+    # Physical WASD positions map to the same directions, so the keys work
+    # on layouts such as AZERTY where that position types Z, Q, S, D.
+    MOVE_SCANCODES: dict[int, int] = {
+        pygame.KSCAN_W: pygame.K_w,
+        pygame.KSCAN_A: pygame.K_a,
+        pygame.KSCAN_S: pygame.K_s,
+        pygame.KSCAN_D: pygame.K_d,
+    }
+    # Short on-screen confirmation of the last cheat used.
+    _toast_text: str = ""
+    _toast_time: float = 0.0
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -275,6 +304,7 @@ class GameEngine:
 
             if self.current_state == self.STATE_PLAYING:
                 self._update_playing(dt)
+            self._toast_time = max(0.0, self._toast_time - dt)
 
             self._draw()
             self.renderer.update_display()
@@ -286,6 +316,8 @@ class GameEngine:
 
         if state == self.STATE_PLAYING:
             self._draw_play_field()
+            if self._toast_time > 0:
+                self.renderer.draw_toast(self._toast_text)
             if self._respawn_pause > 0 and self.player is not None:
                 self.renderer.draw_centered_message(
                     "READY!", f"Lives left: {self.player.lives}"
@@ -356,8 +388,9 @@ class GameEngine:
         """Send keyboard events to the handler of the current screen."""
         if event.type == pygame.KEYUP:
             # Release a held direction so Pac-Man stops moving.
-            if event.key in self._held_move_keys:
-                self._held_move_keys.remove(event.key)
+            move_key = self._move_key(event)
+            if move_key in self._held_move_keys:
+                self._held_move_keys.remove(move_key)
             if not self._held_move_keys:
                 self._move_elapsed = 0.0
             return
@@ -369,7 +402,7 @@ class GameEngine:
         if state == self.STATE_MENU:
             self._handle_menu_key(event.key)
         elif state == self.STATE_PLAYING:
-            self._handle_playing_key(event.key)
+            self._handle_playing_key(event)
         elif state == self.STATE_PAUSED:
             self._handle_pause_key(event.key)
         elif state in (self.STATE_HIGHSCORES, self.STATE_INSTRUCTIONS):
@@ -404,38 +437,84 @@ class GameEngine:
         self._init_level()
         self.current_state = self.STATE_PLAYING
 
-    def _handle_playing_key(self, key: int) -> None:
+    def _move_key(self, event: pygame.event.Event) -> int | None:
+        """Return the MOVE_KEYS entry for this key event, if any.
+
+        The key code is tried first (arrows, WASD as typed); otherwise the
+        physical WASD position is used, whatever the keyboard layout.
+        """
+        if event.key in self.MOVE_KEYS:
+            return int(event.key)
+        return self.MOVE_SCANCODES.get(getattr(event, "scancode", -1))
+
+    def _cheat_for(self, event: pygame.event.Event) -> str | None:
+        """Return the cheat bound to this key event, if any."""
+        if event.key in self.CHEAT_KEYS:
+            return self.CHEAT_KEYS[event.key]
+        return self.CHEAT_SCANCODES.get(getattr(event, "scancode", -1))
+
+    def _handle_playing_key(self, event: pygame.event.Event) -> None:
         """Pause, cheats, and movement keys during a level."""
-        if key == pygame.K_ESCAPE:
+        if event.key == pygame.K_ESCAPE:
             self.current_state = self.STATE_PAUSED
             self.pause_index = 0
             self._held_move_keys.clear()
             self._move_elapsed = 0.0
-        elif key in self.CHEAT_KEYS:
-            self._apply_cheat(self.CHEAT_KEYS[key])
-        elif key in self.MOVE_KEYS:
-            if key not in self._held_move_keys:
-                self._held_move_keys.append(key)
-                self._move_player_one_tile()
-                self._move_elapsed = 0.0
+            return
+
+        cheat = self._cheat_for(event)
+        if cheat is not None:
+            self._apply_cheat(cheat)
+            return
+
+        move_key = self._move_key(event)
+        if move_key is not None and move_key not in self._held_move_keys:
+            self._held_move_keys.append(move_key)
+            self._move_player_one_tile()
+            self._move_elapsed = 0.0
+
+    def _notify(self, message: str) -> None:
+        """Confirm a cheat on screen and in the terminal."""
+        logging.info("Cheat: %s", message)
+        self._toast_text = message
+        self._toast_time = self.TOAST_DURATION
+
+    @staticmethod
+    def _on_off(active: bool) -> str:
+        """Format a toggle state for messages."""
+        return "ON" if active else "OFF"
 
     def _apply_cheat(self, cheat: str) -> None:
         """Run one cheat action (see CHEAT_KEYS for the key bindings)."""
+        manager = self.cheat_manager
         if cheat == self.CHEAT_INVINCIBLE:
-            self.cheat_manager.toggle_invincibility()
+            manager.toggle_invincibility()
+            self._notify(
+                f"Invincibility {self._on_off(manager.invincibility_active)}"
+            )
         elif cheat == self.CHEAT_SKIP_LEVEL:
+            self._notify(f"Skipped level {self.level}")
             self._advance_level()
         elif cheat == self.CHEAT_FREEZE:
-            self.cheat_manager.toggle_ghost_freeze()
+            manager.toggle_ghost_freeze()
+            self._notify(
+                f"Ghost freeze {self._on_off(manager.ghosts_frozen)}"
+            )
         elif cheat == self.CHEAT_EXTRA_LIFE:
             if self.player is not None:
                 self.player.lives = min(self.MAX_LIVES, self.player.lives + 1)
+                self._notify(f"Extra life (lives: {self.player.lives})")
         elif cheat == self.CHEAT_SPEED:
-            self.cheat_manager.toggle_speed_boost()
+            manager.toggle_speed_boost()
+            self._notify(
+                f"Speed boost {self._on_off(manager.speed_boost_active)}"
+            )
         elif cheat == self.CHEAT_POWER:
             self._activate_power_mode()
+            self._notify("Power mode: ghosts are edible")
         elif cheat == self.CHEAT_LOW_TIME:
             self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
+            self._notify(f"Timer set to {int(self.LOW_TIME_CHEAT)} seconds")
 
     def _handle_pause_key(self, key: int) -> None:
         """Resume, or abandon the game and return to the main menu."""

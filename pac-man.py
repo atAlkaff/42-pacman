@@ -15,8 +15,11 @@ from utils.config_parser import GameConfig, parse_config  # noqa: E402
 from utils.maze_adapter import MazeAdapter  # noqa: E402
 from views.pygame_renderer import PygameRenderer  # noqa: E402
 
-# Configure logging for the main entry point to avoid tracebacks
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# Configure logging for the main entry point to avoid tracebacks.
+# force=True: an imported module may already have configured logging.
+logging.basicConfig(
+    level=logging.INFO, format='%(levelname)s: %(message)s', force=True
+)
 
 
 def main() -> None:
