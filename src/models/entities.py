@@ -1,5 +1,7 @@
-import math
+import random
 from typing import Tuple
+
+Move = Tuple[int, int]
 
 
 class Entity:
@@ -39,50 +41,107 @@ class Player(Entity):
 class Ghost(Entity):
     """
     Autonomous enemy entity.
-    Can switch between chasing the player and fleeing when edible.
+
+    A ghost chases the player while dangerous, flees while edible, and
+    waits in its corner for a while after being eaten.
     """
-    def __init__(self, start_r: int, start_c: int) -> None:
+
+    # Distance used for tiles the player cannot reach.
+    UNREACHABLE = 10 ** 9
+
+    def __init__(
+        self, start_r: int, start_c: int, chase_chance: float = 1.0
+    ) -> None:
+        """Create a ghost at its corner.
+
+        Args:
+            start_r: Spawn row.
+            start_c: Spawn column.
+            chase_chance: Probability (0..1) of taking the smartest move at
+                each step. The remaining steps are random, which gives every
+                ghost its own personality.
+        """
         super().__init__(start_r, start_c)
+        self.chase_chance: float = min(1.0, max(0.0, chase_chance))
         self.is_edible: bool = False
         self.edible_timer: float = 0.0
+        self.is_eaten: bool = False
+        self.respawn_timer: float = 0.0
+        self.move_elapsed: float = 0.0
 
     def set_edible(self, duration: float) -> None:
         """Makes the ghost edible for a specified duration."""
+        if self.is_eaten:
+            return
         self.is_edible = True
         self.edible_timer = duration
 
+    def get_eaten(self, respawn_delay: float) -> None:
+        """Send the ghost back to its corner and keep it out of play."""
+        self.reset_position()
+        self.is_edible = False
+        self.edible_timer = 0.0
+        self.is_eaten = True
+        self.respawn_timer = respawn_delay
+        self.move_elapsed = 0.0
+
+    def reset(self) -> None:
+        """Return to the corner in the normal, dangerous state."""
+        self.reset_position()
+        self.is_edible = False
+        self.edible_timer = 0.0
+        self.is_eaten = False
+        self.respawn_timer = 0.0
+        self.move_elapsed = 0.0
+
     def update_timer(self, dt: float) -> None:
-        """Decrements the edible timer and reverts state if time expires."""
+        """Count down the edible and respawn timers."""
         if self.is_edible:
             self.edible_timer -= dt
             if self.edible_timer <= 0:
                 self.is_edible = False
                 self.edible_timer = 0.0
+        if self.is_eaten:
+            self.respawn_timer -= dt
+            if self.respawn_timer <= 0:
+                self.is_eaten = False
+                self.respawn_timer = 0.0
 
-    def get_next_move(
+    def choose_direction(
         self,
-        target_r: int,
-        target_c: int,
-        valid_moves: list[Tuple[int, int]]
-    ) -> Tuple[int, int]:
-        """
-        Determines the next move based on distance to the target.
-        If edible, the target should be a point far away from the player.
+        valid_moves: list[Move],
+        distances: dict[Move, int],
+        rng: random.Random,
+    ) -> Move:
+        """Pick the next step using distances to the player.
+
+        Ghosts never turn back unless it is the only option, so they keep
+        flowing through corridors. With probability ``chase_chance`` the
+        ghost takes the move that brings it closest to the player (or, when
+        edible, the farthest away); otherwise it picks a random move.
+
+        Args:
+            valid_moves: Directions (dr, dc) that do not hit a wall.
+            distances: Walking distance from the player to each tile.
+            rng: Random generator used for the random moves.
+
+        Returns:
+            The chosen (dr, dc), or (0, 0) when the ghost cannot move.
         """
         if not valid_moves:
             return (0, 0)
 
-        best_move = valid_moves[0]
-        min_dist = float('inf')
+        reverse = (-self.dr, -self.dc)
+        forward = [move for move in valid_moves if move != reverse]
+        options = forward or valid_moves
 
-        for move_dr, move_dc in valid_moves:
-            next_r = self.r + move_dr
-            next_c = self.c + move_dc
-            # Euclidean distance to determine closest tile to target
-            dist = math.hypot(target_r - next_r, target_c - next_c)
+        if rng.random() >= self.chase_chance:
+            return rng.choice(options)
 
-            if dist < min_dist:
-                min_dist = dist
-                best_move = (move_dr, move_dc)
+        def distance_after(move: Move) -> int:
+            target = (self.r + move[0], self.c + move[1])
+            return distances.get(target, self.UNREACHABLE)
 
-        return best_move
+        if self.is_edible:
+            return max(options, key=distance_after)
+        return min(options, key=distance_after)

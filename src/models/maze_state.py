@@ -1,4 +1,5 @@
-from typing import List
+from collections import deque
+from typing import List, Tuple
 
 MazeGrid = List[List[int]]
 
@@ -30,6 +31,33 @@ class MazeState:
         if 0 <= r < self.height and 0 <= c < self.width:
             return self.grid[r][c] == self.WALL
         return True
+
+    def open_moves(self, r: int, c: int) -> List[Tuple[int, int]]:
+        """Return the directions (dr, dc) that lead to a non-wall tile."""
+        return [
+            (dr, dc)
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
+            if not self.is_wall(r + dr, c + dc)
+        ]
+
+    def distances_from(self, r: int, c: int) -> dict[Tuple[int, int], int]:
+        """Walking distance (in tiles) from (r, c) to every reachable tile.
+
+        A breadth-first search, so ghosts follow corridors instead of
+        trying to go straight through walls.
+        """
+        if self.is_wall(r, c):
+            return {}
+        distances = {(r, c): 0}
+        queue = deque([(r, c)])
+        while queue:
+            cr, cc = queue.popleft()
+            for dr, dc in self.open_moves(cr, cc):
+                nxt = (cr + dr, cc + dc)
+                if nxt not in distances:
+                    distances[nxt] = distances[(cr, cc)] + 1
+                    queue.append(nxt)
+        return distances
 
     def consume_item(self, r: int, c: int) -> int:
         """

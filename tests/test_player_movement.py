@@ -1,9 +1,11 @@
 """Unit tests for Pac-Man player movement (no game window needed)."""
 
+import random
 import unittest
 
 import pygame
 
+from controllers.cheat_manager import CheatManager
 from controllers.game_engine import GameEngine
 from models.entities import Player
 from models.maze_state import MazeState
@@ -35,6 +37,9 @@ class PlayerMovementTests(unittest.TestCase):
         self.engine.ghosts = []
         self.engine._held_move_keys = []
         self.engine._move_elapsed = 0.0
+        self.engine._respawn_pause = 0.0
+        self.engine._rng = random.Random(0)
+        self.engine.cheat_manager = CheatManager()
         self.engine.time_left = 90.0
         self.engine.level = 1
 
