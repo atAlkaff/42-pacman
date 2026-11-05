@@ -148,9 +148,11 @@ class EngineMenuTests(unittest.TestCase):
         self.engine._handle_input(key_event(key, char))
 
     def type_text(self, text: str) -> None:
-        """Type characters one by one."""
+        """Type characters one by one, as TEXTINPUT events."""
         for char in text:
-            self.press(pygame.K_a, char)
+            self.engine._handle_input(
+                pygame.event.Event(pygame.TEXTINPUT, text=char)
+            )
 
     def test_menu_navigation_wraps(self) -> None:
         """Up from the first item selects the last one (Exit)."""
@@ -220,6 +222,19 @@ class EngineMenuTests(unittest.TestCase):
         self.assertEqual(self.engine.current_state, GameEngine.STATE_MENU)
         reloaded = HighscoreSystem(self.engine.config.highscore_filename)
         self.assertEqual(reloaded.top_scores(), [("Alce Smit", 1234)])
+
+    def test_typed_keys_do_not_double_characters(self) -> None:
+        """KEYDOWN events never add characters; only TEXTINPUT does."""
+        self.engine._end_game(GameEngine.STATE_GAME_OVER)
+        self.press(pygame.K_b, "b")
+        self.type_text("b")
+        self.assertEqual(self.engine.name_input, "b")
+
+    def test_textinput_ignored_outside_name_entry(self) -> None:
+        """Typing during play never changes the name or crashes."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.type_text("1")
+        self.assertEqual(self.engine.name_input, "")
 
     def test_name_entry_escape_skips_saving(self) -> None:
         """ESC on the victory screen returns without saving."""

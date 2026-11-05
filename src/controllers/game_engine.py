@@ -1,6 +1,7 @@
 """Coordinate Pac-Man game states, levels, and rendering."""
 
 import logging
+import os
 import random
 from typing import List
 
@@ -125,6 +126,9 @@ class GameEngine:
     # Short on-screen confirmation of the last cheat used.
     _toast_text: str = ""
     _toast_time: float = 0.0
+    # Set PACMAN_DEBUG_KEYS=1 to log every keyboard event in the terminal.
+    DEBUG_KEYS_ENV = "PACMAN_DEBUG_KEYS"
+    _debug_keys: bool = False
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -178,6 +182,9 @@ class GameEngine:
         self.pause_index = 0
         self.name_input = ""
         self._running = True
+        self._debug_keys = os.environ.get(self.DEBUG_KEYS_ENV, "") not in (
+            "", "0"
+        )
 
     def _init_level(self) -> None:
         """Initialize a configured level, preserving score and lives."""
@@ -290,10 +297,14 @@ class GameEngine:
     def run(self) -> None:
         """Process events, update the game, and render each frame."""
         self._running = True
+        # Keys go straight to the game; text input is only for name entry.
+        self._set_text_input(False)
         while self._running:
             dt = self.clock.tick(60) / 1000.0
 
             for event in pygame.event.get():
+                if self._debug_keys:
+                    self._log_key_event(event)
                 if event.type == pygame.QUIT:
                     self._running = False
                 else:
@@ -393,6 +404,13 @@ class GameEngine:
                 self._held_move_keys.remove(move_key)
             if not self._held_move_keys:
                 self._move_elapsed = 0.0
+            return
+
+        if event.type == pygame.TEXTINPUT:
+            if self.current_state in (
+                self.STATE_GAME_OVER, self.STATE_VICTORY
+            ):
+                self._type_name(event.text)
             return
 
         if event.type != pygame.KEYDOWN:
@@ -529,32 +547,75 @@ class GameEngine:
                 self.current_state = self.STATE_MENU
                 self.menu_index = 0
 
+    @staticmethod
+    def _set_text_input(enabled: bool) -> None:
+        """Turn SDL text input (and the system input method) on or off.
+
+        pygame enables text input by default, which sends ordinary keys
+        through the desktop input method first (IBus on Ubuntu). The input
+        method can keep a key press, and then the game never gets a KEYDOWN
+        for keys like 1-7 or WASD. Text input is therefore only enabled
+        while the player types a name.
+        """
+        try:
+            if enabled:
+                pygame.key.start_text_input()
+            else:
+                pygame.key.stop_text_input()
+        except pygame.error:
+            pass  # No display (e.g. in tests): nothing to configure.
+
+    @staticmethod
+    def _log_key_event(event: pygame.event.Event) -> None:
+        """Print a keyboard event, to diagnose keys that seem ignored."""
+        if event.type in (pygame.KEYDOWN, pygame.KEYUP):
+            logging.info(
+                "%s key=%s (%d) scancode=%s unicode=%r",
+                "KEYDOWN" if event.type == pygame.KEYDOWN else "KEYUP",
+                pygame.key.name(event.key),
+                event.key,
+                getattr(event, "scancode", "?"),
+                getattr(event, "unicode", ""),
+            )
+        elif event.type == pygame.TEXTINPUT:
+            logging.info("TEXTINPUT text=%r", event.text)
+
     def _end_game(self, state: int) -> None:
         """Show the game-over or victory screen and start name entry."""
         self.current_state = state
         self.name_input = ""
         self._held_move_keys.clear()
         self._move_elapsed = 0.0
+        self._set_text_input(True)
+
+    def _leave_name_entry(self) -> None:
+        """Return to the main menu and stop text input again."""
+        self._set_text_input(False)
+        self.current_state = self.STATE_MENU
+        self.menu_index = 0
 
     def _handle_name_entry(self, event: pygame.event.Event) -> None:
-        """Type a name, save it with ENTER, or skip saving with ESC."""
+        """Save the name with ENTER, skip with ESC, delete with BACKSPACE.
+
+        The characters themselves arrive as TEXTINPUT events (see
+        ``_type_name``), which also works with the system input method.
+        """
         key = event.key
         if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             score = self.player.score if self.player else 0
             self.highscores.save_score(self.name_input, score)
-            self.current_state = self.STATE_MENU
-            self.menu_index = 0
+            self._leave_name_entry()
         elif key == pygame.K_ESCAPE:
-            self.current_state = self.STATE_MENU
-            self.menu_index = 0
+            self._leave_name_entry()
         elif key == pygame.K_BACKSPACE:
             self.name_input = self.name_input[:-1]
-        else:
-            char = getattr(event, "unicode", "")
-            if (
-                HighscoreSystem.is_valid_name_char(char)
-                and len(self.name_input) < HighscoreSystem.MAX_NAME_LENGTH
-            ):
+
+    def _type_name(self, text: str) -> None:
+        """Append typed characters that are allowed in highscore names."""
+        for char in text:
+            if len(self.name_input) >= HighscoreSystem.MAX_NAME_LENGTH:
+                break
+            if HighscoreSystem.is_valid_name_char(char):
                 self.name_input += char
 
     def _move_player_one_tile(self) -> bool:
