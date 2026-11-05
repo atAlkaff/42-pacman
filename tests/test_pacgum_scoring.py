@@ -1,10 +1,12 @@
 """Test Pacgum collection, scoring, and temporary power mode."""
 
+import random
 import unittest
 from unittest.mock import patch
 
 import pygame
 
+from controllers.cheat_manager import CheatManager
 from controllers.game_engine import GameEngine
 from models.entities import Ghost, Player
 from models.maze_state import MazeState
@@ -33,6 +35,9 @@ class PacgumScoringTests(unittest.TestCase):
         self.engine.ghosts = [Ghost(1, 1), Ghost(3, 5)]
         self.engine._held_move_keys = []
         self.engine._move_elapsed = 0.0
+        self.engine._respawn_pause = 0.0
+        self.engine._rng = random.Random(0)
+        self.engine.cheat_manager = CheatManager()
         self.engine.time_left = 90.0
         self.engine.level = 1
 

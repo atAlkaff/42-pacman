@@ -1,5 +1,7 @@
 """Coordinate Pac-Man game states, levels, and rendering."""
 
+import logging
+import random
 from typing import List
 
 import pygame
@@ -22,10 +24,20 @@ class GameEngine:
     STATE_GAME_OVER = 3
     STATE_VICTORY = 4
 
-    # Each grid step follows one keyboard direction. Kept separately
-    # from the ghost AI, which will be implemented later.
+    # Seconds between grid steps. Ghosts are a little slower than the
+    # player, and slower still while edible, so they can be caught.
     PLAYER_MOVE_INTERVAL = 0.12
+    GHOST_MOVE_INTERVAL = 0.16
+    GHOST_EDIBLE_MOVE_INTERVAL = 0.28
     POWER_MODE_DURATION = 6.0
+    GHOST_RESPAWN_DELAY = 5.0
+    # Short "READY!" pause after losing a life.
+    RESPAWN_PAUSE = 1.5
+    # How often each ghost takes the smartest move (one per corner).
+    # 1.0 always chases; lower values wander more.
+    GHOST_CHASE_CHANCES = (1.0, 0.85, 0.7, 0.5)
+    # Random mazes that fail validation are regenerated this many times.
+    MAZE_ATTEMPTS = 5
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -68,6 +80,11 @@ class GameEngine:
         self._held_move_keys: list[int] = []
         self._move_elapsed = 0.0
 
+        # Ghost decisions use their own generator: the maze package reseeds
+        # the global random module whenever a maze is generated.
+        self._rng = random.Random()
+        self._respawn_pause = 0.0
+
     def _init_level(self) -> None:
         """Initialize a configured level, preserving score and lives."""
         if not 1 <= self.level <= len(self.config.level):
@@ -83,7 +100,7 @@ class GameEngine:
             height=level_settings.height,
             backend=self.adapter.backend,
         )
-        grid = self.adapter.generate_maze(seed=seed)
+        grid = self._generate_grid(seed)
         self.maze = MazeState(grid)
 
         # Resize for the new maze and bind the HUD to the new surface.
@@ -97,12 +114,17 @@ class GameEngine:
         self.player = Player(center_r, center_c, current_lives)
         self.player.score = current_score
 
+        corners = (
+            (1, 1),
+            (1, self.maze.width - 2),
+            (self.maze.height - 2, 1),
+            (self.maze.height - 2, self.maze.width - 2),
+        )
         self.ghosts = [
-            Ghost(1, 1),
-            Ghost(1, self.maze.width - 2),
-            Ghost(self.maze.height - 2, 1),
-            Ghost(self.maze.height - 2, self.maze.width - 2),
+            Ghost(r, c, chance)
+            for (r, c), chance in zip(corners, self.GHOST_CHASE_CHANCES)
         ]
+        self._respawn_pause = 0.0
         self.time_left = float(
             level_settings.time_limit
             if level_settings.time_limit is not None
@@ -110,6 +132,29 @@ class GameEngine:
         )
         self._held_move_keys.clear()
         self._move_elapsed = 0.0
+
+    def _generate_grid(self, seed: int) -> list[list[int]]:
+        """Generate a level grid, retrying random mazes that are unusable.
+
+        A fixed seed always yields the same maze, so it is tried once.
+
+        Raises:
+            ValueError: If no playable maze could be generated.
+        """
+        attempts = 1 if seed != 0 else self.MAZE_ATTEMPTS
+        last_error: ValueError | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return self.adapter.generate_maze(seed=seed)
+            except ValueError as exc:
+                last_error = exc
+                logging.warning(
+                    "Maze generation attempt %d failed: %s", attempt, exc
+                )
+        raise ValueError(
+            f"Could not generate a playable maze for level {self.level}: "
+            f"{last_error}"
+        )
 
     def _refresh_level_display(self) -> None:
         """Resize once per level and refresh the HUD display surface."""
@@ -139,11 +184,17 @@ class GameEngine:
 
         self.renderer.draw_maze(self.maze)
         self.renderer.draw_entities(self.player, self.ghosts)
+        cheats = []
+        if self.cheat_manager.invincibility_active:
+            cheats.append("F1 invincible")
+        if self.cheat_manager.ghosts_frozen:
+            cheats.append("F3 ghosts frozen")
         self.hud.draw(
             self.player.score,
             self.player.lives,
             self.level,
             max(0, int(self.time_left)),
+            "  ".join(cheats),
         )
 
     def run(self) -> None:
@@ -168,6 +219,10 @@ class GameEngine:
 
             if self.current_state == self.STATE_PLAYING:
                 self._draw_play_field()
+                if self._respawn_pause > 0 and self.player is not None:
+                    self.renderer.draw_centered_message(
+                        "READY!", f"Lives left: {self.player.lives}"
+                    )
             elif self.current_state == self.STATE_PAUSED:
                 self._draw_play_field()
                 self.renderer.draw_centered_message(
@@ -218,6 +273,8 @@ class GameEngine:
                 self.cheat_manager.toggle_invincibility()
             elif event.key == pygame.K_F2:
                 self._advance_level()
+            elif event.key == pygame.K_F3:
+                self.cheat_manager.toggle_ghost_freeze()
             elif event.key in self.MOVE_KEYS:
                 if event.key not in self._held_move_keys:
                     self._held_move_keys.append(event.key)
@@ -237,6 +294,7 @@ class GameEngine:
             or self.player is None
             or self.maze is None
             or not self._held_move_keys
+            or self._respawn_pause > 0
         ):
             return False
 
@@ -252,6 +310,7 @@ class GameEngine:
         self.player.dr = dr
         self.player.dc = dc
         self._consume_current_tile()
+        self._check_ghost_collisions()
         return True
 
     def _consume_current_tile(self) -> None:
@@ -278,13 +337,94 @@ class GameEngine:
             self._move_elapsed -= self.PLAYER_MOVE_INTERVAL
             self._move_player_one_tile()
 
-    def _update_playing(self, dt: float) -> None:
-        """Update the level timer and existing win/loss conditions.
+    def _update_ghosts(self, dt: float) -> None:
+        """Move every active ghost one step when its interval has passed."""
+        if (
+            self.player is None
+            or self.maze is None
+            or self.cheat_manager.ghosts_frozen
+        ):
+            return
 
-        Ghost movement, collisions, and highscore saving are separate
-        unfinished gameplay tasks.
+        distances: dict[tuple[int, int], int] | None = None
+        for ghost in self.ghosts:
+            if ghost.is_eaten:
+                continue
+            interval = (
+                self.GHOST_EDIBLE_MOVE_INTERVAL
+                if ghost.is_edible else self.GHOST_MOVE_INTERVAL
+            )
+            ghost.move_elapsed += max(0.0, dt)
+            if ghost.move_elapsed < interval:
+                continue
+            # At most one step per frame; drop any leftover lag.
+            ghost.move_elapsed = min(ghost.move_elapsed - interval, interval)
+
+            if distances is None:
+                # One search from the player serves all ghosts this frame.
+                distances = self.maze.distances_from(
+                    self.player.r, self.player.c
+                )
+            dr, dc = ghost.choose_direction(
+                self.maze.open_moves(ghost.r, ghost.c), distances, self._rng
+            )
+            ghost.r += dr
+            ghost.c += dc
+            ghost.dr, ghost.dc = dr, dc
+
+            self._check_ghost_collisions()
+            if self.current_state != self.STATE_PLAYING:
+                return
+            if self._respawn_pause > 0:
+                return  # Positions were reset; skip the rest of this frame.
+
+    def _check_ghost_collisions(self) -> None:
+        """Resolve the player sharing a tile with any ghost.
+
+        Moves are made one tile at a time and checked after each step, so a
+        player and a ghost can never pass through each other unnoticed.
         """
+        if self.player is None or self._respawn_pause > 0:
+            return
+
+        for ghost in self.ghosts:
+            if ghost.is_eaten:
+                continue
+            if (ghost.r, ghost.c) != (self.player.r, self.player.c):
+                continue
+            if ghost.is_edible:
+                ghost.get_eaten(self.GHOST_RESPAWN_DELAY)
+                self.player.score += self.config.points_per_ghost
+            elif not self.cheat_manager.invincibility_active:
+                self._lose_life()
+                return
+
+    def _lose_life(self) -> None:
+        """Remove a life, then respawn everyone or end the game."""
+        if self.player is None:
+            return
+
+        self.player.lose_life()
+        self._held_move_keys.clear()
+        self._move_elapsed = 0.0
+        if self.player.lives <= 0:
+            self.current_state = self.STATE_GAME_OVER
+            return
+
+        self.player.reset_position()
+        for ghost in self.ghosts:
+            ghost.reset()
+        self._respawn_pause = self.RESPAWN_PAUSE
+
+    def _update_playing(self, dt: float) -> None:
+        """Advance timers, the player, the ghosts, and win/loss checks."""
         if self.player is None or self.maze is None:
+            return
+
+        if self._respawn_pause > 0:
+            # Everything waits (including the level timer) after a death.
+            self._respawn_pause = max(0.0, self._respawn_pause - dt)
+            self._move_elapsed = 0.0
             return
 
         self.time_left -= dt
@@ -297,6 +437,10 @@ class GameEngine:
             ghost.update_timer(dt)
 
         self._update_player_movement(dt)
-
+        if self.current_state != self.STATE_PLAYING:
+            return
         if self.maze.is_completed():
             self._advance_level()
+            return
+
+        self._update_ghosts(dt)

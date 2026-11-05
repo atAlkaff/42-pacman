@@ -1,5 +1,4 @@
 import pygame
-from typing import Tuple
 
 
 class HUD:
@@ -8,6 +7,7 @@ class HUD:
     lives, level, and time.
     """
     COLOR_TEXT = (255, 255, 255)
+    COLOR_CHEAT = (255, 80, 80)
 
     def __init__(
         self,
@@ -21,9 +21,18 @@ class HUD:
         # Use default Pygame font (equivalent to mlx_string_put constraints)
         self.font = pygame.font.SysFont(None, 24)
 
-    def draw(self, score: int, lives: int, level: int, time_left: int) -> None:
+    def draw(
+        self,
+        score: int,
+        lives: int,
+        level: int,
+        time_left: int,
+        cheats: str = "",
+    ) -> None:
         """
         Draws the required HUD elements at the bottom of the screen.
+
+        ``cheats`` lists active cheat modes on a second line, if any.
         """
         # Render text surfaces
         score_surf = self.font.render(f"Score: {score}", True, self.COLOR_TEXT)
@@ -41,3 +50,8 @@ class HUD:
         self.screen.blit(lives_surf, (self.width // 4, self.start_y + 20))
         self.screen.blit(level_surf, (self.width // 2, self.start_y + 20))
         self.screen.blit(time_surf, (self.width * 3 // 4, self.start_y + 20))
+        if cheats:
+            cheat_surf = self.font.render(
+                f"Cheats: {cheats}", True, self.COLOR_CHEAT
+            )
+            self.screen.blit(cheat_surf, (padding, self.start_y + 48))

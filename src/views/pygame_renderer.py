@@ -18,8 +18,17 @@ class PygameRenderer:
     COLOR_WALL = (30, 30, 200)
     COLOR_PACGUM = (255, 184, 174)
     COLOR_PLAYER = (255, 255, 0)
-    COLOR_GHOST = (255, 0, 0)
+    # One color per corner ghost (red, pink, cyan, orange).
+    GHOST_COLORS = (
+        (255, 0, 0),
+        (255, 184, 255),
+        (0, 255, 255),
+        (255, 184, 82),
+    )
     COLOR_GHOST_EDIBLE = (0, 0, 255)
+    COLOR_GHOST_FLASH = (255, 255, 255)
+    # Edible ghosts flash during the last seconds of power mode.
+    FLASH_WARNING_TIME = 2.0
     COLOR_TEXT = (255, 255, 255)
 
     def __init__(self, grid_width: int, grid_height: int) -> None:
@@ -113,13 +122,20 @@ class PygameRenderer:
             self.screen, self.COLOR_PLAYER, (px, py), radius
         )
 
-        for ghost in ghosts:
+        for index, ghost in enumerate(ghosts):
+            if ghost.is_eaten:
+                continue  # Waiting in its corner to respawn.
             gx = ghost.c * self.tile_size + half_tile
             gy = ghost.r * self.tile_size + half_tile
-            color = (
-                self.COLOR_GHOST_EDIBLE
-                if ghost.is_edible else self.COLOR_GHOST
-            )
+            if not ghost.is_edible:
+                color = self.GHOST_COLORS[index % len(self.GHOST_COLORS)]
+            elif (
+                ghost.edible_timer < self.FLASH_WARNING_TIME
+                and int(ghost.edible_timer * 6) % 2 == 0
+            ):
+                color = self.COLOR_GHOST_FLASH
+            else:
+                color = self.COLOR_GHOST_EDIBLE
             pygame.draw.circle(self.screen, color, (gx, gy), radius)
 
     def draw_centered_message(self, title: str, subtitle: str) -> None:
