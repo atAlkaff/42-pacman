@@ -88,10 +88,11 @@ class PlayerMovementTests(unittest.TestCase):
 
     def test_real_generated_maze_allows_a_valid_move(self) -> None:
         """Check movement in a generated maze from the assigned backend."""
-        grid = MazeAdapter().generate_maze(seed=42)
+        adapter = MazeAdapter()
+        grid = adapter.generate_maze(seed=42)
         self.maze = MazeState(grid)
         self.engine.maze = self.maze
-        center = (len(grid) // 2, len(grid[0]) // 2)
+        center = adapter.spawn
         self.player.r, self.player.c = center
         directions = (
             (pygame.K_UP, -1, 0),

@@ -1,3 +1,5 @@
+"""The grid of one level: walls, corridors, and the items left to eat."""
+
 from collections import deque
 from typing import List, Tuple
 
@@ -25,6 +27,9 @@ class MazeState:
             row.count(self.PACGUM) + row.count(self.SUPER_PACGUM)
             for row in grid
         )
+        # Tiles whose item was eaten, in order. Lets the renderer erase
+        # only those tiles instead of redrawing the whole maze each frame.
+        self.consumed: List[Tuple[int, int]] = []
 
     def is_wall(self, r: int, c: int) -> bool:
         """Checks if a given coordinate is a wall or out of bounds."""
@@ -44,19 +49,29 @@ class MazeState:
         """Walking distance (in tiles) from (r, c) to every reachable tile.
 
         A breadth-first search, so ghosts follow corridors instead of
-        trying to go straight through walls.
+        trying to go straight through walls. Written as a tight loop
+        because it runs every time the player changes tile.
         """
         if self.is_wall(r, c):
             return {}
+        grid = self.grid
+        height, width, wall = self.height, self.width, self.WALL
         distances = {(r, c): 0}
         queue = deque([(r, c)])
         while queue:
             cr, cc = queue.popleft()
-            for dr, dc in self.open_moves(cr, cc):
-                nxt = (cr + dr, cc + dc)
-                if nxt not in distances:
-                    distances[nxt] = distances[(cr, cc)] + 1
-                    queue.append(nxt)
+            step = distances[(cr, cc)] + 1
+            for nr, nc in (
+                (cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)
+            ):
+                if (
+                    0 <= nr < height
+                    and 0 <= nc < width
+                    and grid[nr][nc] != wall
+                    and (nr, nc) not in distances
+                ):
+                    distances[(nr, nc)] = step
+                    queue.append((nr, nc))
         return distances
 
     def consume_item(self, r: int, c: int) -> int:
@@ -71,6 +86,7 @@ class MazeState:
             if item in (self.PACGUM, self.SUPER_PACGUM):
                 self.grid[r][c] = self.CORRIDOR
                 self.remaining_collectables -= 1
+                self.consumed.append((r, c))
                 return item
         return self.CORRIDOR
 

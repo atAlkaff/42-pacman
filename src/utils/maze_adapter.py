@@ -44,6 +44,8 @@ class MazeAdapter:
         self.width = width
         self.height = height
         self.backend = backend or self._default_backend
+        # Player spawn (row, col) of the last generated grid.
+        self.spawn: tuple[int, int] = (0, 0)
 
     @staticmethod
     def _default_backend(width: int, height: int, seed: int) -> RawMaze:
@@ -67,9 +69,9 @@ class MazeAdapter:
 
         self._validate(raw)
         grid = self._convert(raw)
-        center = (len(grid) // 2, len(grid[0]) // 2)
-        if grid[center[0]][center[1]] == self.WALL:
-            raise ValueError("Center spawn is blocked in this maze")
+        # With even maze sizes the exact center is a wall tile, so the
+        # player starts on the open tile closest to the center instead.
+        center = self._nearest_open(grid)
 
         reachable = self._reachable(grid, center)
         corners = (
@@ -93,7 +95,31 @@ class MazeAdapter:
         for row, col in corners:
             grid[row][col] = self.SUPER_PACGUM
 
+        self.spawn = center
         return grid
+
+    @classmethod
+    def _nearest_open(cls, grid: RawMaze) -> tuple[int, int]:
+        """Return the non-wall tile closest to the middle of the grid.
+
+        Ties are broken by row, then column, so the choice is always the
+        same for the same maze.
+
+        Raises:
+            ValueError: If the grid has no open tile at all.
+        """
+        mid_r = (len(grid) - 1) / 2
+        mid_c = (len(grid[0]) - 1) / 2
+        candidates = [
+            (abs(row - mid_r) + abs(col - mid_c), row, col)
+            for row in range(len(grid))
+            for col in range(len(grid[0]))
+            if grid[row][col] != cls.WALL
+        ]
+        if not candidates:
+            raise ValueError("The maze has no open tile for the player")
+        _, row, col = min(candidates)
+        return (row, col)
 
     def _validate(self, raw: RawMaze) -> None:
         """Check shape, wall masks, and shared wall consistency."""

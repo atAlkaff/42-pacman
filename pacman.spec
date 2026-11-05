@@ -1,38 +1,38 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller packaging script for Steam/Itch.io deployment
-
-block_cipher = None
+# PyInstaller packaging script for the itch.io build.
+#
+# Build with `make package` (or `uv run pyinstaller --noconfirm pacman.spec`).
+# The result is a single executable in dist/. PyInstaller builds for the
+# system it runs on, so build on Linux for a Linux release, on Windows for a
+# Windows release, and so on.
+#
+# Started without arguments (as a game platform does), the game uses the
+# config.json next to the executable, or the copy bundled below.
 
 a = Analysis(
     ['pac-man.py'],
-    pathex=[],
+    # Our modules are imported as `controllers`, `models`, `utils`, `views`.
+    pathex=['src'],
     binaries=[],
     datas=[
         ('config.json', '.'),
-        ('README.md', '.')
+        ('README.md', '.'),
     ],
-    hiddenimports=[
-        'pydantic',
-        'pygame',
-        'a_maze_ing' # Ensure the external package is bundled
-    ],
+    # The assigned A-Maze-ing package (imported as `mazegenerator`).
+    hiddenimports=['mazegenerator'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=['tkinter', 'unittest', 'pydoc', 'mypy', 'flake8'],
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='PacMan',
@@ -42,7 +42,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True, # Set to False for a completely windowed app without a terminal
+    console=True,  # False hides the terminal window on Windows and macOS.
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

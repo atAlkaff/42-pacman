@@ -48,15 +48,16 @@ class GameEngine:
     INSTRUCTIONS = (
         "Eat every pacgum to clear the level.",
         "Big super-pacgums make ghosts edible for a short time.",
+        "Eaten ghosts return to their corner and come back dangerous.",
         "A ghost touching you costs a life. Clear all levels to win.",
         "",
         "Move: arrow keys or WASD      Pause: ESC",
         "Menus: arrows/WS + ENTER      Back: ESC",
         "",
-        "Cheats (for review): number keys 1-7 or F1-F7",
+        "Cheats (for review): number keys 1-8 or F1-F8",
         "1 invincible    2 skip level    3 freeze ghosts",
         "4 extra life    5 speed boost    6 power mode",
-        "7 set level timer to 5 seconds",
+        "7 add 60 seconds    8 test time-out (timer to 5 s)",
     )
 
     # Seconds between grid steps. Ghosts are a little slower than the
@@ -74,7 +75,7 @@ class GameEngine:
     # Random mazes that fail validation are regenerated this many times.
     MAZE_ATTEMPTS = 5
     # Each cheat works with a number key, a keypad digit, and a function
-    # key. Laptops often send brightness/volume for F1-F7 unless Fn is
+    # key. Laptops often send brightness/volume for F1-F8 unless Fn is
     # held, so the number row is the reliable choice there.
     CHEAT_INVINCIBLE = "invincible"
     CHEAT_SKIP_LEVEL = "skip_level"
@@ -82,6 +83,7 @@ class GameEngine:
     CHEAT_EXTRA_LIFE = "extra_life"
     CHEAT_SPEED = "speed"
     CHEAT_POWER = "power"
+    CHEAT_ADD_TIME = "add_time"
     CHEAT_LOW_TIME = "low_time"
     CHEAT_KEYS: dict[int, str] = {
         pygame.K_1: CHEAT_INVINCIBLE, pygame.K_F1: CHEAT_INVINCIBLE,
@@ -90,15 +92,16 @@ class GameEngine:
         pygame.K_4: CHEAT_EXTRA_LIFE, pygame.K_F4: CHEAT_EXTRA_LIFE,
         pygame.K_5: CHEAT_SPEED, pygame.K_F5: CHEAT_SPEED,
         pygame.K_6: CHEAT_POWER, pygame.K_F6: CHEAT_POWER,
-        pygame.K_7: CHEAT_LOW_TIME, pygame.K_F7: CHEAT_LOW_TIME,
+        pygame.K_7: CHEAT_ADD_TIME, pygame.K_F7: CHEAT_ADD_TIME,
+        pygame.K_8: CHEAT_LOW_TIME, pygame.K_F8: CHEAT_LOW_TIME,
         pygame.K_KP1: CHEAT_INVINCIBLE, pygame.K_KP2: CHEAT_SKIP_LEVEL,
         pygame.K_KP3: CHEAT_FREEZE, pygame.K_KP4: CHEAT_EXTRA_LIFE,
         pygame.K_KP5: CHEAT_SPEED, pygame.K_KP6: CHEAT_POWER,
-        pygame.K_KP7: CHEAT_LOW_TIME,
+        pygame.K_KP7: CHEAT_ADD_TIME, pygame.K_KP8: CHEAT_LOW_TIME,
     }
     # Physical key positions (scancodes) of the number row. On AZERTY and
     # other layouts these keys type symbols such as '&' unless Shift is
-    # held, so their key code is not K_1..K_7; the position is the same.
+    # held, so their key code is not K_1..K_8; the position is the same.
     CHEAT_SCANCODES: dict[int, str] = {
         pygame.KSCAN_1: CHEAT_INVINCIBLE,
         pygame.KSCAN_2: CHEAT_SKIP_LEVEL,
@@ -106,13 +109,17 @@ class GameEngine:
         pygame.KSCAN_4: CHEAT_EXTRA_LIFE,
         pygame.KSCAN_5: CHEAT_SPEED,
         pygame.KSCAN_6: CHEAT_POWER,
-        pygame.KSCAN_7: CHEAT_LOW_TIME,
+        pygame.KSCAN_7: CHEAT_ADD_TIME,
+        pygame.KSCAN_8: CHEAT_LOW_TIME,
     }
     # Seconds a cheat confirmation stays on screen.
     TOAST_DURATION = 2.0
     # The speed cheat divides the player's step interval by this factor.
     SPEED_BOOST_FACTOR = 2.0
-    # Seconds left on the clock after the low-time cheat.
+    # Seconds added by the add-time cheat.
+    ADD_TIME_CHEAT = 60.0
+    # Seconds left after the low-time cheat, which lets a reviewer check
+    # the time-out (game over) without waiting for the whole level timer.
     LOW_TIME_CHEAT = 5.0
     MAX_LIVES = 99
     # Physical WASD positions map to the same directions, so the keys work
@@ -129,6 +136,10 @@ class GameEngine:
     # Set PACMAN_DEBUG_KEYS=1 to log every keyboard event in the terminal.
     DEBUG_KEYS_ENV = "PACMAN_DEBUG_KEYS"
     _debug_keys: bool = False
+    # Distances from the player, reused until the player moves.
+    _distance_maze: MazeState | None = None
+    _distance_pos: tuple[int, int] | None = None
+    _distance_map: dict[tuple[int, int], int] = {}
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -210,8 +221,8 @@ class GameEngine:
         current_score = self.player.score if self.player else 0
         current_lives = self.player.lives if self.player else self.config.lives
 
-        center_r = self.maze.height // 2
-        center_c = self.maze.width // 2
+        # The adapter picks the open tile closest to the middle of the maze.
+        center_r, center_c = self.adapter.spawn
         self.player = Player(center_r, center_c, current_lives)
         self.player.score = current_score
 
@@ -530,9 +541,14 @@ class GameEngine:
         elif cheat == self.CHEAT_POWER:
             self._activate_power_mode()
             self._notify("Power mode: ghosts are edible")
+        elif cheat == self.CHEAT_ADD_TIME:
+            self.time_left += self.ADD_TIME_CHEAT
+            self._notify(f"+{int(self.ADD_TIME_CHEAT)} seconds")
         elif cheat == self.CHEAT_LOW_TIME:
             self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
-            self._notify(f"Timer set to {int(self.LOW_TIME_CHEAT)} seconds")
+            self._notify(
+                f"Time-out test: {int(self.LOW_TIME_CHEAT)} seconds left"
+            )
 
     def _handle_pause_key(self, key: int) -> None:
         """Resume, or abandon the game and return to the main menu."""
@@ -554,7 +570,7 @@ class GameEngine:
         pygame enables text input by default, which sends ordinary keys
         through the desktop input method first (IBus on Ubuntu). The input
         method can keep a key press, and then the game never gets a KEYDOWN
-        for keys like 1-7 or WASD. Text input is therefore only enabled
+        for keys like 1-8 or WASD. Text input is therefore only enabled
         while the player types a name.
         """
         try:
@@ -705,10 +721,7 @@ class GameEngine:
             ghost.move_elapsed = min(ghost.move_elapsed - interval, interval)
 
             if distances is None:
-                # One search from the player serves all ghosts this frame.
-                distances = self.maze.distances_from(
-                    self.player.r, self.player.c
-                )
+                distances = self._distances_from_player()
             dr, dc = ghost.choose_direction(
                 self.maze.open_moves(ghost.r, ghost.c), distances, self._rng
             )
@@ -721,6 +734,23 @@ class GameEngine:
                 return
             if self._respawn_pause > 0:
                 return  # Positions were reset; skip the rest of this frame.
+
+    def _distances_from_player(self) -> dict[tuple[int, int], int]:
+        """Walking distances from the player, cached until they move.
+
+        One breadth-first search serves every ghost, and it is only
+        repeated after the player changes tile (or the level changes).
+        """
+        if self.player is None or self.maze is None:
+            return {}
+        position = (self.player.r, self.player.c)
+        if self._distance_maze is not self.maze or (
+            self._distance_pos != position
+        ):
+            self._distance_map = self.maze.distances_from(*position)
+            self._distance_maze = self.maze
+            self._distance_pos = position
+        return self._distance_map
 
     def _check_ghost_collisions(self) -> None:
         """Resolve the player sharing a tile with any ghost.
