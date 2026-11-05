@@ -187,6 +187,14 @@ class PygameRenderer:
                 subtitle, 26, self.COLOR_TEXT, center_y + 40
             )
 
+    def draw_toast(self, text: str) -> None:
+        """Show a short notice in a box near the top of the play area."""
+        image = self._font(28).render(text, True, self.COLOR_TITLE)
+        box = image.get_rect(center=(self.width // 2, 30)).inflate(24, 12)
+        pygame.draw.rect(self.screen, self.COLOR_BG, box)
+        pygame.draw.rect(self.screen, self.COLOR_TITLE, box, 2)
+        self.screen.blit(image, image.get_rect(center=box.center))
+
     def draw_overlay(self) -> None:
         """Darken the whole window, e.g. behind the pause menu."""
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)

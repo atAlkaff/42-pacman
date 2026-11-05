@@ -17,9 +17,13 @@ from utils.config_parser import GameConfig
 from utils.highscore_system import HighscoreSystem
 
 
-def key_event(key: int, char: str = "") -> pygame.event.Event:
+def key_event(
+    key: int, char: str = "", scancode: int = 0
+) -> pygame.event.Event:
     """Build a KEYDOWN event like pygame would send it."""
-    return pygame.event.Event(pygame.KEYDOWN, key=key, unicode=char)
+    return pygame.event.Event(
+        pygame.KEYDOWN, key=key, unicode=char, scancode=scancode
+    )
 
 
 class HighscoreSystemTests(unittest.TestCase):
@@ -144,9 +148,11 @@ class EngineMenuTests(unittest.TestCase):
         self.engine._handle_input(key_event(key, char))
 
     def type_text(self, text: str) -> None:
-        """Type characters one by one."""
+        """Type characters one by one, as TEXTINPUT events."""
         for char in text:
-            self.press(pygame.K_a, char)
+            self.engine._handle_input(
+                pygame.event.Event(pygame.TEXTINPUT, text=char)
+            )
 
     def test_menu_navigation_wraps(self) -> None:
         """Up from the first item selects the last one (Exit)."""
@@ -217,6 +223,19 @@ class EngineMenuTests(unittest.TestCase):
         reloaded = HighscoreSystem(self.engine.config.highscore_filename)
         self.assertEqual(reloaded.top_scores(), [("Alce Smit", 1234)])
 
+    def test_typed_keys_do_not_double_characters(self) -> None:
+        """KEYDOWN events never add characters; only TEXTINPUT does."""
+        self.engine._end_game(GameEngine.STATE_GAME_OVER)
+        self.press(pygame.K_b, "b")
+        self.type_text("b")
+        self.assertEqual(self.engine.name_input, "b")
+
+    def test_textinput_ignored_outside_name_entry(self) -> None:
+        """Typing during play never changes the name or crashes."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.type_text("1")
+        self.assertEqual(self.engine.name_input, "")
+
     def test_name_entry_escape_skips_saving(self) -> None:
         """ESC on the victory screen returns without saving."""
         self.engine._end_game(GameEngine.STATE_VICTORY)
@@ -242,6 +261,50 @@ class EngineMenuTests(unittest.TestCase):
             self.engine.current_state, GameEngine.STATE_GAME_OVER
         )
 
+    def test_number_keys_mirror_function_keys(self) -> None:
+        """Keys 1-7 trigger the same cheats as F1-F7 (laptop friendly)."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        manager = self.engine.cheat_manager
+        self.press(pygame.K_1)
+        self.assertTrue(manager.invincibility_active)
+        self.press(pygame.K_F1)
+        self.assertFalse(manager.invincibility_active)
+        self.press(pygame.K_3)
+        self.assertTrue(manager.ghosts_frozen)
+        self.press(pygame.K_4)
+        self.assertEqual(self.engine.player.lives, 4)
+        self.press(pygame.K_6)
+        self.assertTrue(all(g.is_edible for g in self.engine.ghosts))
+        self.press(pygame.K_7)
+        self.assertEqual(self.engine.time_left, GameEngine.LOW_TIME_CHEAT)
+        with patch.object(self.engine, "_advance_level") as advance:
+            self.press(pygame.K_2)
+            advance.assert_called_once_with()
+
+    def test_cheats_use_physical_number_row(self) -> None:
+        """AZERTY: the '1' position types '&' but still toggles cheat 1."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.engine._handle_input(
+            key_event(pygame.K_AMPERSAND, "&", pygame.KSCAN_1)
+        )
+        self.assertTrue(self.engine.cheat_manager.invincibility_active)
+        self.assertEqual(self.engine._toast_text, "Invincibility ON")
+        self.engine._handle_input(key_event(pygame.K_KP4, "4"))
+        self.assertEqual(self.engine.player.lives, 4)
+
+    def test_wasd_uses_physical_positions(self) -> None:
+        """AZERTY: the W position types 'z' but still moves up."""
+        self.engine.current_state = GameEngine.STATE_PLAYING
+        self.engine.player = Player(2, 2, 3)
+        self.engine._handle_input(key_event(pygame.K_z, "z", pygame.KSCAN_W))
+        self.assertEqual(
+            (self.engine.player.r, self.engine.player.c), (1, 2)
+        )
+        self.engine._handle_input(pygame.event.Event(
+            pygame.KEYUP, key=pygame.K_z, scancode=pygame.KSCAN_W
+        ))
+        self.assertEqual(self.engine._held_move_keys, [])
+
     def test_extra_life_cheat(self) -> None:
         """F4 adds a life."""
         self.engine.current_state = GameEngine.STATE_PLAYING
@@ -264,7 +327,7 @@ class EngineMenuTests(unittest.TestCase):
             [1, 1, 1, 1, 1, 1, 1, 1],
         ])
         self.press(pygame.K_F5)
-        self.assertIn("F5 speed", self.engine.cheat_manager.active_labels())
+        self.assertIn("5 speed", self.engine.cheat_manager.active_labels())
         self.press(pygame.K_RIGHT)  # Immediate first step.
         self.engine._update_player_movement(GameEngine.PLAYER_MOVE_INTERVAL)
         self.assertEqual(self.engine.player.c, 4)

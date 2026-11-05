@@ -1,6 +1,7 @@
 """Coordinate Pac-Man game states, levels, and rendering."""
 
 import logging
+import os
 import random
 from typing import List
 
@@ -52,10 +53,10 @@ class GameEngine:
         "Move: arrow keys or WASD      Pause: ESC",
         "Menus: arrows/WS + ENTER      Back: ESC",
         "",
-        "Cheats (for review):",
-        "F1 invincible    F2 skip level    F3 freeze ghosts",
-        "F4 extra life    F5 speed boost    F6 power mode",
-        "F7 set level timer to 5 seconds",
+        "Cheats (for review): number keys 1-7 or F1-F7",
+        "1 invincible    2 skip level    3 freeze ghosts",
+        "4 extra life    5 speed boost    6 power mode",
+        "7 set level timer to 5 seconds",
     )
 
     # Seconds between grid steps. Ghosts are a little slower than the
@@ -72,11 +73,62 @@ class GameEngine:
     GHOST_CHASE_CHANCES = (1.0, 0.85, 0.7, 0.5)
     # Random mazes that fail validation are regenerated this many times.
     MAZE_ATTEMPTS = 5
-    # The F5 cheat divides the player's step interval by this factor.
+    # Each cheat works with a number key, a keypad digit, and a function
+    # key. Laptops often send brightness/volume for F1-F7 unless Fn is
+    # held, so the number row is the reliable choice there.
+    CHEAT_INVINCIBLE = "invincible"
+    CHEAT_SKIP_LEVEL = "skip_level"
+    CHEAT_FREEZE = "freeze"
+    CHEAT_EXTRA_LIFE = "extra_life"
+    CHEAT_SPEED = "speed"
+    CHEAT_POWER = "power"
+    CHEAT_LOW_TIME = "low_time"
+    CHEAT_KEYS: dict[int, str] = {
+        pygame.K_1: CHEAT_INVINCIBLE, pygame.K_F1: CHEAT_INVINCIBLE,
+        pygame.K_2: CHEAT_SKIP_LEVEL, pygame.K_F2: CHEAT_SKIP_LEVEL,
+        pygame.K_3: CHEAT_FREEZE, pygame.K_F3: CHEAT_FREEZE,
+        pygame.K_4: CHEAT_EXTRA_LIFE, pygame.K_F4: CHEAT_EXTRA_LIFE,
+        pygame.K_5: CHEAT_SPEED, pygame.K_F5: CHEAT_SPEED,
+        pygame.K_6: CHEAT_POWER, pygame.K_F6: CHEAT_POWER,
+        pygame.K_7: CHEAT_LOW_TIME, pygame.K_F7: CHEAT_LOW_TIME,
+        pygame.K_KP1: CHEAT_INVINCIBLE, pygame.K_KP2: CHEAT_SKIP_LEVEL,
+        pygame.K_KP3: CHEAT_FREEZE, pygame.K_KP4: CHEAT_EXTRA_LIFE,
+        pygame.K_KP5: CHEAT_SPEED, pygame.K_KP6: CHEAT_POWER,
+        pygame.K_KP7: CHEAT_LOW_TIME,
+    }
+    # Physical key positions (scancodes) of the number row. On AZERTY and
+    # other layouts these keys type symbols such as '&' unless Shift is
+    # held, so their key code is not K_1..K_7; the position is the same.
+    CHEAT_SCANCODES: dict[int, str] = {
+        pygame.KSCAN_1: CHEAT_INVINCIBLE,
+        pygame.KSCAN_2: CHEAT_SKIP_LEVEL,
+        pygame.KSCAN_3: CHEAT_FREEZE,
+        pygame.KSCAN_4: CHEAT_EXTRA_LIFE,
+        pygame.KSCAN_5: CHEAT_SPEED,
+        pygame.KSCAN_6: CHEAT_POWER,
+        pygame.KSCAN_7: CHEAT_LOW_TIME,
+    }
+    # Seconds a cheat confirmation stays on screen.
+    TOAST_DURATION = 2.0
+    # The speed cheat divides the player's step interval by this factor.
     SPEED_BOOST_FACTOR = 2.0
-    # Seconds left on the clock after the F7 cheat.
+    # Seconds left on the clock after the low-time cheat.
     LOW_TIME_CHEAT = 5.0
     MAX_LIVES = 99
+    # Physical WASD positions map to the same directions, so the keys work
+    # on layouts such as AZERTY where that position types Z, Q, S, D.
+    MOVE_SCANCODES: dict[int, int] = {
+        pygame.KSCAN_W: pygame.K_w,
+        pygame.KSCAN_A: pygame.K_a,
+        pygame.KSCAN_S: pygame.K_s,
+        pygame.KSCAN_D: pygame.K_d,
+    }
+    # Short on-screen confirmation of the last cheat used.
+    _toast_text: str = ""
+    _toast_time: float = 0.0
+    # Set PACMAN_DEBUG_KEYS=1 to log every keyboard event in the terminal.
+    DEBUG_KEYS_ENV = "PACMAN_DEBUG_KEYS"
+    _debug_keys: bool = False
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -130,6 +182,9 @@ class GameEngine:
         self.pause_index = 0
         self.name_input = ""
         self._running = True
+        self._debug_keys = os.environ.get(self.DEBUG_KEYS_ENV, "") not in (
+            "", "0"
+        )
 
     def _init_level(self) -> None:
         """Initialize a configured level, preserving score and lives."""
@@ -242,10 +297,14 @@ class GameEngine:
     def run(self) -> None:
         """Process events, update the game, and render each frame."""
         self._running = True
+        # Keys go straight to the game; text input is only for name entry.
+        self._set_text_input(False)
         while self._running:
             dt = self.clock.tick(60) / 1000.0
 
             for event in pygame.event.get():
+                if self._debug_keys:
+                    self._log_key_event(event)
                 if event.type == pygame.QUIT:
                     self._running = False
                 else:
@@ -256,6 +315,7 @@ class GameEngine:
 
             if self.current_state == self.STATE_PLAYING:
                 self._update_playing(dt)
+            self._toast_time = max(0.0, self._toast_time - dt)
 
             self._draw()
             self.renderer.update_display()
@@ -267,6 +327,8 @@ class GameEngine:
 
         if state == self.STATE_PLAYING:
             self._draw_play_field()
+            if self._toast_time > 0:
+                self.renderer.draw_toast(self._toast_text)
             if self._respawn_pause > 0 and self.player is not None:
                 self.renderer.draw_centered_message(
                     "READY!", f"Lives left: {self.player.lives}"
@@ -337,10 +399,18 @@ class GameEngine:
         """Send keyboard events to the handler of the current screen."""
         if event.type == pygame.KEYUP:
             # Release a held direction so Pac-Man stops moving.
-            if event.key in self._held_move_keys:
-                self._held_move_keys.remove(event.key)
+            move_key = self._move_key(event)
+            if move_key in self._held_move_keys:
+                self._held_move_keys.remove(move_key)
             if not self._held_move_keys:
                 self._move_elapsed = 0.0
+            return
+
+        if event.type == pygame.TEXTINPUT:
+            if self.current_state in (
+                self.STATE_GAME_OVER, self.STATE_VICTORY
+            ):
+                self._type_name(event.text)
             return
 
         if event.type != pygame.KEYDOWN:
@@ -350,7 +420,7 @@ class GameEngine:
         if state == self.STATE_MENU:
             self._handle_menu_key(event.key)
         elif state == self.STATE_PLAYING:
-            self._handle_playing_key(event.key)
+            self._handle_playing_key(event)
         elif state == self.STATE_PAUSED:
             self._handle_pause_key(event.key)
         elif state in (self.STATE_HIGHSCORES, self.STATE_INSTRUCTIONS):
@@ -385,33 +455,84 @@ class GameEngine:
         self._init_level()
         self.current_state = self.STATE_PLAYING
 
-    def _handle_playing_key(self, key: int) -> None:
+    def _move_key(self, event: pygame.event.Event) -> int | None:
+        """Return the MOVE_KEYS entry for this key event, if any.
+
+        The key code is tried first (arrows, WASD as typed); otherwise the
+        physical WASD position is used, whatever the keyboard layout.
+        """
+        if event.key in self.MOVE_KEYS:
+            return int(event.key)
+        return self.MOVE_SCANCODES.get(getattr(event, "scancode", -1))
+
+    def _cheat_for(self, event: pygame.event.Event) -> str | None:
+        """Return the cheat bound to this key event, if any."""
+        if event.key in self.CHEAT_KEYS:
+            return self.CHEAT_KEYS[event.key]
+        return self.CHEAT_SCANCODES.get(getattr(event, "scancode", -1))
+
+    def _handle_playing_key(self, event: pygame.event.Event) -> None:
         """Pause, cheats, and movement keys during a level."""
-        if key == pygame.K_ESCAPE:
+        if event.key == pygame.K_ESCAPE:
             self.current_state = self.STATE_PAUSED
             self.pause_index = 0
             self._held_move_keys.clear()
             self._move_elapsed = 0.0
-        elif key == pygame.K_F1:
-            self.cheat_manager.toggle_invincibility()
-        elif key == pygame.K_F2:
+            return
+
+        cheat = self._cheat_for(event)
+        if cheat is not None:
+            self._apply_cheat(cheat)
+            return
+
+        move_key = self._move_key(event)
+        if move_key is not None and move_key not in self._held_move_keys:
+            self._held_move_keys.append(move_key)
+            self._move_player_one_tile()
+            self._move_elapsed = 0.0
+
+    def _notify(self, message: str) -> None:
+        """Confirm a cheat on screen and in the terminal."""
+        logging.info("Cheat: %s", message)
+        self._toast_text = message
+        self._toast_time = self.TOAST_DURATION
+
+    @staticmethod
+    def _on_off(active: bool) -> str:
+        """Format a toggle state for messages."""
+        return "ON" if active else "OFF"
+
+    def _apply_cheat(self, cheat: str) -> None:
+        """Run one cheat action (see CHEAT_KEYS for the key bindings)."""
+        manager = self.cheat_manager
+        if cheat == self.CHEAT_INVINCIBLE:
+            manager.toggle_invincibility()
+            self._notify(
+                f"Invincibility {self._on_off(manager.invincibility_active)}"
+            )
+        elif cheat == self.CHEAT_SKIP_LEVEL:
+            self._notify(f"Skipped level {self.level}")
             self._advance_level()
-        elif key == pygame.K_F3:
-            self.cheat_manager.toggle_ghost_freeze()
-        elif key == pygame.K_F4:
+        elif cheat == self.CHEAT_FREEZE:
+            manager.toggle_ghost_freeze()
+            self._notify(
+                f"Ghost freeze {self._on_off(manager.ghosts_frozen)}"
+            )
+        elif cheat == self.CHEAT_EXTRA_LIFE:
             if self.player is not None:
                 self.player.lives = min(self.MAX_LIVES, self.player.lives + 1)
-        elif key == pygame.K_F5:
-            self.cheat_manager.toggle_speed_boost()
-        elif key == pygame.K_F6:
+                self._notify(f"Extra life (lives: {self.player.lives})")
+        elif cheat == self.CHEAT_SPEED:
+            manager.toggle_speed_boost()
+            self._notify(
+                f"Speed boost {self._on_off(manager.speed_boost_active)}"
+            )
+        elif cheat == self.CHEAT_POWER:
             self._activate_power_mode()
-        elif key == pygame.K_F7:
+            self._notify("Power mode: ghosts are edible")
+        elif cheat == self.CHEAT_LOW_TIME:
             self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
-        elif key in self.MOVE_KEYS:
-            if key not in self._held_move_keys:
-                self._held_move_keys.append(key)
-                self._move_player_one_tile()
-                self._move_elapsed = 0.0
+            self._notify(f"Timer set to {int(self.LOW_TIME_CHEAT)} seconds")
 
     def _handle_pause_key(self, key: int) -> None:
         """Resume, or abandon the game and return to the main menu."""
@@ -426,32 +547,75 @@ class GameEngine:
                 self.current_state = self.STATE_MENU
                 self.menu_index = 0
 
+    @staticmethod
+    def _set_text_input(enabled: bool) -> None:
+        """Turn SDL text input (and the system input method) on or off.
+
+        pygame enables text input by default, which sends ordinary keys
+        through the desktop input method first (IBus on Ubuntu). The input
+        method can keep a key press, and then the game never gets a KEYDOWN
+        for keys like 1-7 or WASD. Text input is therefore only enabled
+        while the player types a name.
+        """
+        try:
+            if enabled:
+                pygame.key.start_text_input()
+            else:
+                pygame.key.stop_text_input()
+        except pygame.error:
+            pass  # No display (e.g. in tests): nothing to configure.
+
+    @staticmethod
+    def _log_key_event(event: pygame.event.Event) -> None:
+        """Print a keyboard event, to diagnose keys that seem ignored."""
+        if event.type in (pygame.KEYDOWN, pygame.KEYUP):
+            logging.info(
+                "%s key=%s (%d) scancode=%s unicode=%r",
+                "KEYDOWN" if event.type == pygame.KEYDOWN else "KEYUP",
+                pygame.key.name(event.key),
+                event.key,
+                getattr(event, "scancode", "?"),
+                getattr(event, "unicode", ""),
+            )
+        elif event.type == pygame.TEXTINPUT:
+            logging.info("TEXTINPUT text=%r", event.text)
+
     def _end_game(self, state: int) -> None:
         """Show the game-over or victory screen and start name entry."""
         self.current_state = state
         self.name_input = ""
         self._held_move_keys.clear()
         self._move_elapsed = 0.0
+        self._set_text_input(True)
+
+    def _leave_name_entry(self) -> None:
+        """Return to the main menu and stop text input again."""
+        self._set_text_input(False)
+        self.current_state = self.STATE_MENU
+        self.menu_index = 0
 
     def _handle_name_entry(self, event: pygame.event.Event) -> None:
-        """Type a name, save it with ENTER, or skip saving with ESC."""
+        """Save the name with ENTER, skip with ESC, delete with BACKSPACE.
+
+        The characters themselves arrive as TEXTINPUT events (see
+        ``_type_name``), which also works with the system input method.
+        """
         key = event.key
         if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             score = self.player.score if self.player else 0
             self.highscores.save_score(self.name_input, score)
-            self.current_state = self.STATE_MENU
-            self.menu_index = 0
+            self._leave_name_entry()
         elif key == pygame.K_ESCAPE:
-            self.current_state = self.STATE_MENU
-            self.menu_index = 0
+            self._leave_name_entry()
         elif key == pygame.K_BACKSPACE:
             self.name_input = self.name_input[:-1]
-        else:
-            char = getattr(event, "unicode", "")
-            if (
-                HighscoreSystem.is_valid_name_char(char)
-                and len(self.name_input) < HighscoreSystem.MAX_NAME_LENGTH
-            ):
+
+    def _type_name(self, text: str) -> None:
+        """Append typed characters that are allowed in highscore names."""
+        for char in text:
+            if len(self.name_input) >= HighscoreSystem.MAX_NAME_LENGTH:
+                break
+            if HighscoreSystem.is_valid_name_char(char):
                 self.name_input += char
 
     def _move_player_one_tile(self) -> bool:

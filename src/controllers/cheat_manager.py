@@ -33,9 +33,9 @@ class CheatManager:
         """Short names of the cheats that are currently on, for the HUD."""
         labels = []
         if self.invincibility_active:
-            labels.append("F1 invincible")
+            labels.append("1 invincible")
         if self.ghosts_frozen:
-            labels.append("F3 frozen")
+            labels.append("3 frozen")
         if self.speed_boost_active:
-            labels.append("F5 speed")
+            labels.append("5 speed")
         return labels
