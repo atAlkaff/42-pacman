@@ -252,9 +252,9 @@ class EngineMenuTests(unittest.TestCase):
         self.assertEqual(self.engine.name_input, "")
 
     def test_timeout_leads_to_game_over(self) -> None:
-        """The F7 cheat sets the timer to 5 s; running out ends the game."""
+        """Cheat 8 sets the timer to 5 s; running out ends the game."""
         self.engine.current_state = GameEngine.STATE_PLAYING
-        self.press(pygame.K_F7)
+        self.press(pygame.K_F8)
         self.assertEqual(self.engine.time_left, GameEngine.LOW_TIME_CHEAT)
         self.engine._update_playing(GameEngine.LOW_TIME_CHEAT + 0.1)
         self.assertEqual(
@@ -262,7 +262,7 @@ class EngineMenuTests(unittest.TestCase):
         )
 
     def test_number_keys_mirror_function_keys(self) -> None:
-        """Keys 1-7 trigger the same cheats as F1-F7 (laptop friendly)."""
+        """Keys 1-8 trigger the same cheats as F1-F8 (laptop friendly)."""
         self.engine.current_state = GameEngine.STATE_PLAYING
         manager = self.engine.cheat_manager
         self.press(pygame.K_1)
@@ -276,6 +276,10 @@ class EngineMenuTests(unittest.TestCase):
         self.press(pygame.K_6)
         self.assertTrue(all(g.is_edible for g in self.engine.ghosts))
         self.press(pygame.K_7)
+        self.assertEqual(
+            self.engine.time_left, 90.0 + GameEngine.ADD_TIME_CHEAT
+        )
+        self.press(pygame.K_8)
         self.assertEqual(self.engine.time_left, GameEngine.LOW_TIME_CHEAT)
         with patch.object(self.engine, "_advance_level") as advance:
             self.press(pygame.K_2)
