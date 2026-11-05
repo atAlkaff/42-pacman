@@ -48,6 +48,7 @@ class GameEngine:
     INSTRUCTIONS = (
         "Eat every pacgum to clear the level.",
         "Big super-pacgums make ghosts edible for a short time.",
+        "Eaten ghosts return to their corner and come back dangerous.",
         "A ghost touching you costs a life. Clear all levels to win.",
         "",
         "Move: arrow keys or WASD      Pause: ESC",
