@@ -10,6 +10,7 @@ from controllers.cheat_manager import CheatManager
 from models.entities import Ghost, Player
 from models.maze_state import MazeState
 from utils.config_parser import GameConfig
+from utils.highscore_system import HighscoreSystem
 from utils.maze_adapter import MazeAdapter
 from views.hud import HUD
 from views.pygame_renderer import PygameRenderer
@@ -23,6 +24,39 @@ class GameEngine:
     STATE_PAUSED = 2
     STATE_GAME_OVER = 3
     STATE_VICTORY = 4
+    STATE_HIGHSCORES = 5
+    STATE_INSTRUCTIONS = 6
+
+    MENU_START = "Start Game"
+    MENU_HIGHSCORES = "Highscores"
+    MENU_INSTRUCTIONS = "Instructions"
+    MENU_EXIT = "Exit"
+    MENU_ITEMS = (MENU_START, MENU_HIGHSCORES, MENU_INSTRUCTIONS, MENU_EXIT)
+
+    PAUSE_RESUME = "Resume"
+    PAUSE_MAIN_MENU = "Main Menu"
+    PAUSE_ITEMS = (PAUSE_RESUME, PAUSE_MAIN_MENU)
+
+    # Number of highscores listed directly on the main menu.
+    MENU_HIGHSCORE_PREVIEW = 5
+
+    CONFIRM_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE)
+    MENU_UP_KEYS = (pygame.K_UP, pygame.K_w)
+    MENU_DOWN_KEYS = (pygame.K_DOWN, pygame.K_s)
+
+    INSTRUCTIONS = (
+        "Eat every pacgum to clear the level.",
+        "Big super-pacgums make ghosts edible for a short time.",
+        "A ghost touching you costs a life. Clear all levels to win.",
+        "",
+        "Move: arrow keys or WASD      Pause: ESC",
+        "Menus: arrows/WS + ENTER      Back: ESC",
+        "",
+        "Cheats (for review):",
+        "F1 invincible    F2 skip level    F3 freeze ghosts",
+        "F4 extra life    F5 speed boost    F6 power mode",
+        "F7 set level timer to 5 seconds",
+    )
 
     # Seconds between grid steps. Ghosts are a little slower than the
     # player, and slower still while edible, so they can be caught.
@@ -38,6 +72,11 @@ class GameEngine:
     GHOST_CHASE_CHANCES = (1.0, 0.85, 0.7, 0.5)
     # Random mazes that fail validation are regenerated this many times.
     MAZE_ATTEMPTS = 5
+    # The F5 cheat divides the player's step interval by this factor.
+    SPEED_BOOST_FACTOR = 2.0
+    # Seconds left on the clock after the F7 cheat.
+    LOW_TIME_CHEAT = 5.0
+    MAX_LIVES = 99
     MOVE_KEYS: dict[int, tuple[int, int]] = {
         pygame.K_UP: (-1, 0),
         pygame.K_w: (-1, 0),
@@ -84,6 +123,13 @@ class GameEngine:
         # the global random module whenever a maze is generated.
         self._rng = random.Random()
         self._respawn_pause = 0.0
+
+        # Loaded once at start-up; saved at the end of every game.
+        self.highscores = HighscoreSystem(config.highscore_filename)
+        self.menu_index = 0
+        self.pause_index = 0
+        self.name_input = ""
+        self._running = True
 
     def _init_level(self) -> None:
         """Initialize a configured level, preserving score and lives."""
@@ -171,7 +217,7 @@ class GameEngine:
     def _advance_level(self) -> None:
         """Move to the next configured level or stop at victory."""
         if self.level >= len(self.config.level):
-            self.current_state = self.STATE_VICTORY
+            self._end_game(self.STATE_VICTORY)
             return
 
         self.level += 1
@@ -184,11 +230,7 @@ class GameEngine:
 
         self.renderer.draw_maze(self.maze)
         self.renderer.draw_entities(self.player, self.ghosts)
-        cheats = []
-        if self.cheat_manager.invincibility_active:
-            cheats.append("F1 invincible")
-        if self.cheat_manager.ghosts_frozen:
-            cheats.append("F3 ghosts frozen")
+        cheats = self.cheat_manager.active_labels()
         self.hud.draw(
             self.player.score,
             self.player.lives,
@@ -199,54 +241,100 @@ class GameEngine:
 
     def run(self) -> None:
         """Process events, update the game, and render each frame."""
-        running = True
-        while running:
+        self._running = True
+        while self._running:
             dt = self.clock.tick(60) / 1000.0
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    self._running = False
                 else:
                     self._handle_input(event)
 
-            if not running:
+            if not self._running:
                 break
 
             if self.current_state == self.STATE_PLAYING:
                 self._update_playing(dt)
 
-            self.renderer.clear_screen()
-
-            if self.current_state == self.STATE_PLAYING:
-                self._draw_play_field()
-                if self._respawn_pause > 0 and self.player is not None:
-                    self.renderer.draw_centered_message(
-                        "READY!", f"Lives left: {self.player.lives}"
-                    )
-            elif self.current_state == self.STATE_PAUSED:
-                self._draw_play_field()
-                self.renderer.draw_centered_message(
-                    "PAUSED", "Press ESC to resume"
-                )
-            elif self.current_state == self.STATE_MENU:
-                self.renderer.draw_centered_message(
-                    "PAC-MAN", "Press SPACE to start"
-                )
-            elif self.current_state == self.STATE_GAME_OVER:
-                self.renderer.draw_centered_message(
-                    "GAME OVER", "Press SPACE for menu"
-                )
-            elif self.current_state == self.STATE_VICTORY:
-                self.renderer.draw_centered_message(
-                    "VICTORY!", "Press SPACE for menu"
-                )
-
+            self._draw()
             self.renderer.update_display()
 
-        pygame.quit()
+    def _draw(self) -> None:
+        """Render the screen that matches the current state."""
+        self.renderer.clear_screen()
+        state = self.current_state
+
+        if state == self.STATE_PLAYING:
+            self._draw_play_field()
+            if self._respawn_pause > 0 and self.player is not None:
+                self.renderer.draw_centered_message(
+                    "READY!", f"Lives left: {self.player.lives}"
+                )
+        elif state == self.STATE_PAUSED:
+            self._draw_play_field()
+            self.renderer.draw_overlay()
+            self.renderer.draw_menu(
+                "PAUSED",
+                self.PAUSE_ITEMS,
+                self.pause_index,
+                ("ESC to resume",),
+            )
+        elif state == self.STATE_MENU:
+            lines = ["Highscores:"] + self._highscore_lines(
+                self.MENU_HIGHSCORE_PREVIEW
+            )
+            self.renderer.draw_menu(
+                "PAC-MAN", self.MENU_ITEMS, self.menu_index, lines
+            )
+        elif state == self.STATE_HIGHSCORES:
+            self.renderer.draw_menu(
+                "HIGHSCORES",
+                lines=self._highscore_lines(HighscoreSystem.MAX_ENTRIES)
+                + ["", "ESC or ENTER to go back"],
+            )
+        elif state == self.STATE_INSTRUCTIONS:
+            self.renderer.draw_menu(
+                "HOW TO PLAY",
+                lines=self.INSTRUCTIONS + ("", "ESC or ENTER to go back"),
+            )
+        elif state in (self.STATE_GAME_OVER, self.STATE_VICTORY):
+            score = self.player.score if self.player else 0
+            if state == self.STATE_VICTORY:
+                title = "VICTORY!"
+                message = "Congratulations, you cleared every level!"
+            else:
+                title = "GAME OVER"
+                message = "Better luck next time."
+            cursor = "_" if len(self.name_input) < (
+                HighscoreSystem.MAX_NAME_LENGTH
+            ) else ""
+            self.renderer.draw_menu(
+                title,
+                lines=(
+                    message,
+                    f"Final score: {score}",
+                    "",
+                    "Enter your name for the highscores:",
+                    f"[ {self.name_input}{cursor} ]",
+                    "Letters, digits and spaces, max 10",
+                    "",
+                    "ENTER to save    ESC to skip",
+                ),
+            )
+
+    def _highscore_lines(self, count: int) -> list[str]:
+        """Format the best ``count`` highscores as numbered lines."""
+        scores = self.highscores.top_scores()[:count]
+        if not scores:
+            return ["No highscores yet"]
+        return [
+            f"{rank}. {name} - {score} pts"
+            for rank, (name, score) in enumerate(scores, start=1)
+        ]
 
     def _handle_input(self, event: pygame.event.Event) -> None:
-        """Handle game controls, including arrow keys and WASD."""
+        """Send keyboard events to the handler of the current screen."""
         if event.type == pygame.KEYUP:
             # Release a held direction so Pac-Man stops moving.
             if event.key in self._held_move_keys:
@@ -258,34 +346,113 @@ class GameEngine:
         if event.type != pygame.KEYDOWN:
             return
 
-        if self.current_state == self.STATE_MENU:
-            if event.key == pygame.K_SPACE:
-                self.level = 1
-                self.player = None  # A new game resets score and lives.
-                self._init_level()
-                self.current_state = self.STATE_PLAYING
-        elif self.current_state == self.STATE_PLAYING:
-            if event.key == pygame.K_ESCAPE:
-                self.current_state = self.STATE_PAUSED
-                self._held_move_keys.clear()
-                self._move_elapsed = 0.0
-            elif event.key == pygame.K_F1:
-                self.cheat_manager.toggle_invincibility()
-            elif event.key == pygame.K_F2:
-                self._advance_level()
-            elif event.key == pygame.K_F3:
-                self.cheat_manager.toggle_ghost_freeze()
-            elif event.key in self.MOVE_KEYS:
-                if event.key not in self._held_move_keys:
-                    self._held_move_keys.append(event.key)
-                    self._move_player_one_tile()
-                    self._move_elapsed = 0.0
-        elif self.current_state == self.STATE_PAUSED:
-            if event.key == pygame.K_ESCAPE:
-                self.current_state = self.STATE_PLAYING
-        elif self.current_state in (self.STATE_GAME_OVER, self.STATE_VICTORY):
-            if event.key == pygame.K_SPACE:
+        state = self.current_state
+        if state == self.STATE_MENU:
+            self._handle_menu_key(event.key)
+        elif state == self.STATE_PLAYING:
+            self._handle_playing_key(event.key)
+        elif state == self.STATE_PAUSED:
+            self._handle_pause_key(event.key)
+        elif state in (self.STATE_HIGHSCORES, self.STATE_INSTRUCTIONS):
+            if event.key == pygame.K_ESCAPE or event.key in self.CONFIRM_KEYS:
                 self.current_state = self.STATE_MENU
+        elif state in (self.STATE_GAME_OVER, self.STATE_VICTORY):
+            self._handle_name_entry(event)
+
+    def _handle_menu_key(self, key: int) -> None:
+        """Navigate the main menu and run the chosen entry."""
+        if key in self.MENU_UP_KEYS:
+            self.menu_index = (self.menu_index - 1) % len(self.MENU_ITEMS)
+        elif key in self.MENU_DOWN_KEYS:
+            self.menu_index = (self.menu_index + 1) % len(self.MENU_ITEMS)
+        elif key == pygame.K_ESCAPE:
+            self._running = False
+        elif key in self.CONFIRM_KEYS:
+            choice = self.MENU_ITEMS[self.menu_index]
+            if choice == self.MENU_START:
+                self._start_new_game()
+            elif choice == self.MENU_HIGHSCORES:
+                self.current_state = self.STATE_HIGHSCORES
+            elif choice == self.MENU_INSTRUCTIONS:
+                self.current_state = self.STATE_INSTRUCTIONS
+            elif choice == self.MENU_EXIT:
+                self._running = False
+
+    def _start_new_game(self) -> None:
+        """Reset score, lives and level, then start level 1."""
+        self.level = 1
+        self.player = None  # A new game resets score and lives.
+        self._init_level()
+        self.current_state = self.STATE_PLAYING
+
+    def _handle_playing_key(self, key: int) -> None:
+        """Pause, cheats, and movement keys during a level."""
+        if key == pygame.K_ESCAPE:
+            self.current_state = self.STATE_PAUSED
+            self.pause_index = 0
+            self._held_move_keys.clear()
+            self._move_elapsed = 0.0
+        elif key == pygame.K_F1:
+            self.cheat_manager.toggle_invincibility()
+        elif key == pygame.K_F2:
+            self._advance_level()
+        elif key == pygame.K_F3:
+            self.cheat_manager.toggle_ghost_freeze()
+        elif key == pygame.K_F4:
+            if self.player is not None:
+                self.player.lives = min(self.MAX_LIVES, self.player.lives + 1)
+        elif key == pygame.K_F5:
+            self.cheat_manager.toggle_speed_boost()
+        elif key == pygame.K_F6:
+            self._activate_power_mode()
+        elif key == pygame.K_F7:
+            self.time_left = min(self.time_left, self.LOW_TIME_CHEAT)
+        elif key in self.MOVE_KEYS:
+            if key not in self._held_move_keys:
+                self._held_move_keys.append(key)
+                self._move_player_one_tile()
+                self._move_elapsed = 0.0
+
+    def _handle_pause_key(self, key: int) -> None:
+        """Resume, or abandon the game and return to the main menu."""
+        if key == pygame.K_ESCAPE:
+            self.current_state = self.STATE_PLAYING
+        elif key in self.MENU_UP_KEYS or key in self.MENU_DOWN_KEYS:
+            self.pause_index = (self.pause_index + 1) % len(self.PAUSE_ITEMS)
+        elif key in self.CONFIRM_KEYS:
+            if self.PAUSE_ITEMS[self.pause_index] == self.PAUSE_RESUME:
+                self.current_state = self.STATE_PLAYING
+            else:
+                self.current_state = self.STATE_MENU
+                self.menu_index = 0
+
+    def _end_game(self, state: int) -> None:
+        """Show the game-over or victory screen and start name entry."""
+        self.current_state = state
+        self.name_input = ""
+        self._held_move_keys.clear()
+        self._move_elapsed = 0.0
+
+    def _handle_name_entry(self, event: pygame.event.Event) -> None:
+        """Type a name, save it with ENTER, or skip saving with ESC."""
+        key = event.key
+        if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            score = self.player.score if self.player else 0
+            self.highscores.save_score(self.name_input, score)
+            self.current_state = self.STATE_MENU
+            self.menu_index = 0
+        elif key == pygame.K_ESCAPE:
+            self.current_state = self.STATE_MENU
+            self.menu_index = 0
+        elif key == pygame.K_BACKSPACE:
+            self.name_input = self.name_input[:-1]
+        else:
+            char = getattr(event, "unicode", "")
+            if (
+                HighscoreSystem.is_valid_name_char(char)
+                and len(self.name_input) < HighscoreSystem.MAX_NAME_LENGTH
+            ):
+                self.name_input += char
 
     def _move_player_one_tile(self) -> bool:
         """Move Pac-Man one cell, but never through walls or boundaries."""
@@ -323,8 +490,18 @@ class GameEngine:
             self.player.score += self.config.points_per_pacgum
         elif item == MazeState.SUPER_PACGUM:
             self.player.score += self.config.points_per_super_pacgum
-            for ghost in self.ghosts:
-                ghost.set_edible(self.POWER_MODE_DURATION)
+            self._activate_power_mode()
+
+    def _activate_power_mode(self) -> None:
+        """Make every ghost that is in play edible for a short time."""
+        for ghost in self.ghosts:
+            ghost.set_edible(self.POWER_MODE_DURATION)
+
+    def _player_move_interval(self) -> float:
+        """Seconds between player steps, shorter with the speed cheat."""
+        if self.cheat_manager.speed_boost_active:
+            return self.PLAYER_MOVE_INTERVAL / self.SPEED_BOOST_FACTOR
+        return self.PLAYER_MOVE_INTERVAL
 
     def _update_player_movement(self, dt: float) -> None:
         """Repeat movement while a direction key is held."""
@@ -332,10 +509,13 @@ class GameEngine:
             self._move_elapsed = 0.0
             return
 
+        interval = self._player_move_interval()
         self._move_elapsed += max(0.0, dt)
-        while self._move_elapsed >= self.PLAYER_MOVE_INTERVAL:
-            self._move_elapsed -= self.PLAYER_MOVE_INTERVAL
+        while self._move_elapsed >= interval:
+            self._move_elapsed -= interval
             self._move_player_one_tile()
+            if self.current_state != self.STATE_PLAYING:
+                return
 
     def _update_ghosts(self, dt: float) -> None:
         """Move every active ghost one step when its interval has passed."""
@@ -408,7 +588,7 @@ class GameEngine:
         self._held_move_keys.clear()
         self._move_elapsed = 0.0
         if self.player.lives <= 0:
-            self.current_state = self.STATE_GAME_OVER
+            self._end_game(self.STATE_GAME_OVER)
             return
 
         self.player.reset_position()
@@ -429,8 +609,9 @@ class GameEngine:
 
         self.time_left -= dt
         if self.time_left <= 0 or self.player.lives <= 0:
+            # Running out of time ends the game (our choice in the subject).
             self.time_left = max(0.0, self.time_left)
-            self.current_state = self.STATE_GAME_OVER
+            self._end_game(self.STATE_GAME_OVER)
             return
 
         for ghost in self.ghosts:
