@@ -42,7 +42,7 @@ The project uses **Pygame**, **Pydantic**, and the provided `mazegenerator` whee
 ### Clone and install
 
 ```bash
-git clone https://github.com/atAlkaff/42-pacman.git
+git clone .... 42-pacman
 cd 42-pacman
 make install
 ```
