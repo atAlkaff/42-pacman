@@ -26,6 +26,6 @@
 | ≥ 10 levels with time limits, pause (VI.7) | ✅ | `config.json`, `config_parser.py` |
 | Main menu, HUD, pause menu, game-over and victory screens (VI.8) | ✅ | `game_engine.py`, `src/views/` |
 | Makefile rules, flake8, mypy (III) | ✅ | `Makefile`, `.flake8`, `pyproject.toml` |
-| Packaged game on a public platform (VII) | TODO | `pacman.spec`, itch.io link |
+| Packaged game on a public platform (VII) | ✅ | `pacman.spec`, https://atalkaff.itch.io/pacman-42 |
 | README with required sections (IX) | ✅ | `README.md` |
 | Project management folder (VIII) | ✅ | this folder |
