@@ -356,4 +356,4 @@ ChatGPT was used as a development **assistance tool**, including explaining proj
 - **Afnan Balfagieh** — 42 login: `abalfagi`
 - **Ahmed Alkaff** — 42 login: `aalkaff`
 
-Repository: <https://github.com/atAlkaff/42-pacman>
+Game Link: <https://atalkaff.itch.io/42-pacman>
