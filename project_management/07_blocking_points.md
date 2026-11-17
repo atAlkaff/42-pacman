@@ -15,7 +15,7 @@ team, with how each was resolved.
   input method (IBus) can consume key presses while SDL text input is on.
 - **Resolution:** cheats on number keys and keypad as well; matching by
   physical key position; text input enabled only during name entry.
-- **Time lost:** TODO
+- **Time lost:** 2 days
 
 ### BP2 – Even maze sizes crashed the game
 
@@ -24,23 +24,9 @@ team, with how each was resolved.
   game quit immediately.
 - **Resolution:** the player spawns on the open tile nearest the center;
   tests now cover many sizes.
-
-### BP3 – TODO
-
-TODO: add other technical blocking points (for example obtaining the
-assigned maze package, its interface, environment or uv problems).
-
-## Team conflicts and disagreements
-
-| Date | Topic | Positions | How it was resolved |
-| --- | --- | --- | --- |
-| TODO | TODO | TODO | TODO |
-
-TODO: if there were no conflicts, say how you avoided them (for example
-clear ownership of modules and reviews through pull requests).
-
+  
 ## Lessons learned
 
-TODO: 3–5 points. For example: test on the lab machines early; check the
-config edge cases the reviewer can change; keep the docs updated during
-the project instead of at the end.
+- Test on the lab machines early;
+- Check the config edge cases the reviewer can change;
+- Keep the docs updated during the project instead of at the end.
