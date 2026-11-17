@@ -1,12 +1,7 @@
 # Acceptance Test Plan
 
 Manual tests that check every requirement of the subject from a player's
-or reviewer's point of view. Run them on a lab machine before submission
-and again with the packaged build.
-
-**How to record a result:** put ✅ (pass) or ❌ (fail) in the `Result`
-column, with the date and initials, e.g. `✅ 2026-11-20 AA`. A failure gets
-a row in the "Bugs found" table below.
+or reviewer's point of view. 
 
 Automated tests complement this plan: `make test` runs 63 unit tests
 (movement, scoring, ghosts, collisions, menus, name entry, cheats, the
@@ -91,5 +86,3 @@ highscore file, config parsing, and many maze sizes).
 | B5 | 2026-11-06 | Even maze sizes (e.g. 20×20) quit at start | The exact center tile is always a wall for even sizes | Spawn on the nearest open tile | 2026-11-07 | `tests/test_maze_adapter.py` |
 | B6 | 2026-11-07 | Large mazes slow (about 25 fps at 100×100) | Every tile redrawn every frame | Cached maze image; size limit 60 | 2026-11-07 | Manual timing |
 | B7 | 2026-11-07 | Packaged build could not start | Wrong module name and missing `src` path in `pacman.spec` | Spec fixed; no-argument launch | 2026-11-08 | Manual (T4, T5) |
-
-TODO: add any other bug found during your own testing.
