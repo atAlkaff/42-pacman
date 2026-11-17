@@ -12,14 +12,3 @@ tracked, and delivered, as required by the subject (chapter VIII).
 | [05_team_organization.md](05_team_organization.md) | Who did what, how decisions were made, how issues were handled |
 | [06_acceptance_test_plan.md](06_acceptance_test_plan.md) | Feature-by-feature acceptance tests, results, and bugs found/fixed |
 | [07_blocking_points.md](07_blocking_points.md) | Blocking points and conflicts met during the project and how they were solved |
-| [templates/meeting_notes.md](templates/meeting_notes.md) | Template for recording team meetings |
-
-## How to fill in this template
-
-- Every `TODO` marks information only the team can provide (dates, names,
-  opinions). Replace it, then delete the marker.
-- Rows already filled in come from the repository itself (git history,
-  code, tests). Check them and correct anything that is wrong.
-- Keep the documents up to date as you go: the subject asks for *actual*
-  progress compared with the plan, not a plan written at the end.
-- Link to evidence (commits, pull requests, test files) whenever you can.
