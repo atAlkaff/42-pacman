@@ -10,7 +10,7 @@
 ## Who did what
 
 | Area | Owner | Reviewer |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | Project setup (uv, Makefile, flake8, spec) | aalkaff | abalfagi |
 | Maze adapter | abalfagi | aalkaff |
 | Config parser | abalfagi | aalkaff |
