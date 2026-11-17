@@ -25,3 +25,7 @@ highscores.json
 # PyInstaller output (rebuild with `make package`)
 build/
 dist/
+
+# Release archives (rebuild with `make release`)
+release/
+PacMan-*.zip
