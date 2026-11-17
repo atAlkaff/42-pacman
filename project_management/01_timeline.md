@@ -34,8 +34,6 @@ gantt
 
 ## Planned vs actual
 
-The "Actual" column comes from the git history (`git log --date=short`).
-
 | Milestone | Planned | Actual | Difference / reason |
 | --- | --- | --- | --- |
 | Project initialized | 2026-10-13 | 2026-10-13 | |
