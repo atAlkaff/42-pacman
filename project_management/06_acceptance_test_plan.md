@@ -66,8 +66,8 @@ highscore file, config parsing, and many maze sizes).
 
 | ID | Test | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
-| C1 | All cheats | Keys 1–8 during play | Each shows its message; the effect is visible (HUD, lives, timer, ghosts) | |
-| C2 | F-keys | F1–F8 (with Fn if needed) | Same effects as 1–8 | |
+| C1 | All cheats | Keys 1–8 during play | Each shows its message; the effect is visible (HUD, lives, timer, ghosts) | ✅ |
+| C2 | F-keys | F1–F8 (with Fn if needed) | Same effects as 1–8 | ✅ |
 
 ## Tooling and packaging
 
