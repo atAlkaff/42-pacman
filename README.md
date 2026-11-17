@@ -87,6 +87,7 @@ The source program reports argument and configuration problems through logging r
 | `make lint-strict` | Run Flake8 and Mypy with `--strict`. |
 | `make test` | Discover and run the `unittest` test suite. |
 | `make package` | Build the standalone executable with PyInstaller. |
+| `make release` | Build the executable and zip it with `config.json` and the README as `PacMan-linux.zip`, ready for itch.io. |
 
 ### Package and launch a standalone game
 
