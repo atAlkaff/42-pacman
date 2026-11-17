@@ -1,17 +1,13 @@
 # Progress Tracking
 
-One row per week (or per meeting). Compare what was planned for the period
-with what was actually done, and explain any gap.
-
-| Week | Planned for the week | Actually done | Status | Notes / evidence |
+| Week | Planned for the week | Actually done | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 2026-10-13 → 10-19 | TODO | Repository created; uv, flake8, Makefile; first maze adapter; bare-bones game; PyInstaller spec | TODO | Commits `9ec8a66` → `38fed5b` |
-| 2026-10-20 → 10-26 | TODO | Dummy config; highscore system moved to `utils`; assigned A-Maze-ing package imported; config parser, player movement, scoring (abalfagi) | TODO | Commits `805a610` → `2e91eaa` |
-| 2026-10-27 → 11-02 | TODO | Level progression, timers, pause, window-resize fix and their tests (abalfagi) | TODO | Commit `cea2f5e` |
-| 2026-11-03 → 11-09 | TODO | Entry point wired to the engine; ghost AI, collisions, lives; menus; name entry; highscores; cheats; keyboard fix; lint; packaging; config hardening; performance | TODO | Pull requests #1–#4 |
-| 2026-11-10 → 11-16 | TODO | README written | TODO | Commit `338d47f` |
-| TODO | TODO | Project management documents | TODO | |
-| TODO | TODO | itch.io upload and final acceptance tests | TODO | |
+| 2026-10-13 → 10-19 | Project setup and initialization | Repository created; uv, flake8, Makefile; first maze adapter; PyInstaller spec | ✅ | ✅ |
+| 2026-10-20 → 10-26 | Basic implementation and config | Dummy config; highscore system moved to `utils`; assigned A-Maze-ing package imported; config parser, player movement, scoring (abalfagi) | ✅ | ✅ |
+| 2026-10-27 → 11-02 | Levels, timers, and rendering | Level progression, timers, pause, window-resize fix and their tests (abalfagi) | ✅ | ✅ |
+| 2026-11-03 → 11-09 | Connecting the layers together | Entry point wired to the engine; ghost AI, collisions, lives; menus; name entry; highscores; cheats; keyboard fix; lint; packaging; config hardening; performance | ✅ | ✅ |
+| 2026-11-10 → 11-16 | Documentation | README and project management documents written | ✅ | ✅ |
+| 2026-11-17 → 11-23 | Upload to itch.io and submission | itch.io upload and final acceptance tests | ✅ | ✅|
 
 **Status values:** ✅ on track · ⚠️ late · ❌ blocked · ➕ ahead
 
@@ -31,5 +27,5 @@ with what was actually done, and explain any gap.
 | Main menu, HUD, pause menu, game-over and victory screens (VI.8) | ✅ | `game_engine.py`, `src/views/` |
 | Makefile rules, flake8, mypy (III) | ✅ | `Makefile`, `.flake8`, `pyproject.toml` |
 | Packaged game on a public platform (VII) | TODO | `pacman.spec`, itch.io link |
-| README with required sections (IX) | ✅ draft | `README.md` |
-| Project management folder (VIII) | 🚧 in progress | this folder |
+| README with required sections (IX) | ✅ | `README.md` |
+| Project management folder (VIII) | ✅ | this folder |
